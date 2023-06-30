@@ -1,0 +1,30 @@
+dataset:
+  desc: Datasets used
+  values: 'MNIST+Superpixels'
+epochs:
+  desc: Number of epochs to train over
+  values: 30
+size:
+  desc: Size of the dataset
+  values: 60000
+hidden_dim:
+  desc: Hidden dimension of GNN models
+  values: 32
+k:
+  desc: Dimension of the concept layer
+  values: 12
+local_num_classes:
+  desc: Number of classes of the datasets on the local task
+  values: 10
+num_classes:
+  desc: Number of classes of the datasets on the global task
+  values: 19
+lr:
+  desc: Learning rate to use
+  values: 0.001
+batch_size:
+  desc: Batch size
+  values: 64
+dev:
+  desc: Dev used to run the model
+  values: 'cuda'

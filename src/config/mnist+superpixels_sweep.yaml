@@ -1,0 +1,15 @@
+program: experiments+superpixels_extra.py
+method: grid
+parameters:
+  seed:
+    values:
+    - 0
+    - 4
+    - 13
+    - 23
+    - 42
+  mode:
+    values:
+    - 'sharcs'
+    - 'anchors'
+    - 'multi_CBM'

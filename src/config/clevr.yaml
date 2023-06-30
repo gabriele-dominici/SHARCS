@@ -1,0 +1,27 @@
+dataset:
+  desc: Datasets used
+  values: 'CLEVR'
+epochs:
+  desc: Number of epochs to train over
+  values: 30
+size:
+  desc: Size of the dataset
+  values: 8000
+vocab_dim:
+  desc: Dimension of the vocabulary
+  values: 22
+k:
+  desc: Dimension of the concept layer
+  values: 24
+num_classes:
+  desc: Number of classes of the datasets on the global task
+  values: 2
+lr:
+  desc: Learning rate to use
+  values: 0.001
+batch_size:
+  desc: Batch size
+  values: 100
+dev:
+  desc: Dev used to run the model
+  values: 'cuda'

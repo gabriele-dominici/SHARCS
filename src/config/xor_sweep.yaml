@@ -1,0 +1,16 @@
+program: experiments_xor_extra.py
+method: grid
+parameters:
+  seed:
+    seed:
+    values:
+    - 0
+    - 4
+    - 13
+    - 23
+    - 42
+  mode:
+    values:
+    - 'SHARCS'
+    - 'anchors'
+    - 'multi_CBM'

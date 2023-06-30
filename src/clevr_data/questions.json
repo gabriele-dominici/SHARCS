@@ -1,0 +1,58 @@
+[
+  {
+    "text": [      
+      "<Z> <C> <M> <S>"      
+    ],
+    "ref_answers": [
+      ">0"
+    ],
+    "nodes": [
+      {
+        "inputs": [],
+        "type": "scene"
+      },
+      {
+        "side_inputs": [
+          "<Z>",
+          "<C>",
+          "<M>",
+          "<S>"
+        ],
+        "inputs": [
+          0
+        ],
+        "type": "filter"
+      },
+      {
+      	"inputs": [
+      	  1
+      	],
+      	"type": "count"
+      }
+    ],
+    "params": [
+      {
+        "type": "Size",
+        "name": "<Z>"
+      },
+      {
+        "type": "Color",
+        "name": "<C>"
+      },
+      {
+        "type": "Material",
+        "name": "<M>"
+      },
+      {
+        "type": "Shape",
+        "name": "<S>"
+      }
+    ],
+    "constraints": [
+	{"type": "NOT NULL", "params": ["<Z>"]},
+	{"type": "NOT NULL", "params": ["<C>"]},
+	{"type": "NOT NULL", "params": ["<M>"]},
+	{"type": "NOT NULL", "params": ["<S>"]}
+    ]
+  }
+]

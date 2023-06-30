@@ -1,0 +1,27 @@
+dataset:
+  desc: Datasets used
+  values: 'XOR-AND-XOR'
+epochs:
+  desc: Number of epochs to train over
+  values: 150
+size:
+  desc: Size of the dataset
+  values: 1000
+hidden_dim:
+  desc: Hidden dimension of GNN models
+  values: 30
+k:
+  desc: Dimension of the concept layer
+  values: 7
+num_classes:
+  desc: Number of classes of the datasets
+  values: 2
+lr:
+  desc: Learning rate to use
+  values: 0.001
+batch_size:
+  desc: Batch size
+  values: 64
+dev:
+  desc: Dev used to run the model
+  values: 'cpu'

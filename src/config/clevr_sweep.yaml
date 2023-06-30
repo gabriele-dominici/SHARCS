@@ -1,0 +1,13 @@
+program: experiments_clevr_extra.py
+method: grid
+parameters:
+  seed:
+    values:
+    - 0
+    - 13
+    - 42
+  mode:
+    values:
+    - 'SHARCS'
+    - 'multi_CBM'
+    - 'anchors'
