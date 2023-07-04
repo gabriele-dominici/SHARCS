@@ -1,6 +1,7 @@
 # SHARCS: SHARed Concept Space for Explainable Multimodal Learning
 
-
+Official code for the paper [**SHARCS: Shared Concept Space for
+Explainable Multimodal Learning**](https://arxiv.org/abs/2307.00316?context=cs.AI)
 
 # Installation
 
