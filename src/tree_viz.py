@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from numbers import Number
 from typing import List, Tuple, Mapping
-
+import torch
 import numpy as np
 import pandas as pd
 import sklearn
@@ -1037,15 +1037,15 @@ class DTreeVizAPI:
 
     def generate_images(self, filter, concept_embeddings, y, batch, edges_or_mod1, mod2, path, x=None, pos_g=None, mode='xor'):
         path_list = []
-        indexes = torch.Tensor(np.arange(concept_embeddings.shape[0]))
+        indexes = np.arange(concept_embeddings.shape[0])
+        concept_embeddings = concept_embeddings.detach().numpy()
         filtered_concept_embeddings = concept_embeddings
         for k, v in filter:
-            f = (filtered_concept_embeddings > 0.5).float()[:, k] == v
+            f = (filtered_concept_embeddings > 0.5).astype(float)[:, k] == v
             indexes = indexes[f]
             filtered_concept_embeddings = filtered_concept_embeddings[f]
         
-        filtered_concept_embeddings = filtered_concept_embeddings.detach().numpy()
-        indexes = indexes.detach().numpy()
+
         sort_indices = np.argsort(np.absolute(filtered_concept_embeddings[:, k]-v))
         real_indexes = indexes[sort_indices][:min(3,len(sort_indices))]
         if mode == 'xor':

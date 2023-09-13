@@ -33,7 +33,6 @@ def test_graph_class(model, dataloader, if_interpretable_model=True, mode='sharc
     # enter evaluation mode
     correct = 0
     correct_t = 0
-    dev = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device(dev)
     for data in dataloader:
         data.to(device)
@@ -86,7 +85,6 @@ def test_graph_class(model, dataloader, if_interpretable_model=True, mode='sharc
 
 def train_graph_class(model, train_loader, test_loader, epochs, lr, if_interpretable_model=True, mode='sharcs'):
     # register hooks to track activation
-    dev = "cuda" if torch.cuda.is_available() else "cpu"
     model = model_utils.register_hooks(model)
     device = torch.device(dev)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -484,7 +482,6 @@ def retreived_similar(mod, similar_concepts):
     return retreived
 
 def test_missing_modality(dataloader, model, concepts_mod1, concepts_mod2):
-    dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     device = torch.device(dev)
     correct = 0
     print('----MISSING MOD 1----')
@@ -513,7 +510,6 @@ def test_missing_modality(dataloader, model, concepts_mod1, concepts_mod2):
     return acc1, acc2
 
 def test_missing_modality_anchors(dataloader, model, pred_model, concepts_mod1, concepts_mod2, anchors_mod1, anchors_mod2):
-    dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     device = torch.device(dev)
     correct = 0
     print('----MISSING MOD 1----')
@@ -546,7 +542,6 @@ def test_missing_modality_anchors(dataloader, model, pred_model, concepts_mod1, 
 
 def collect_hidden_representation(model, dataloader):
     model.eval()
-    dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     device = torch.device(dev)
     tab = []
     graph = []
@@ -566,7 +561,6 @@ def collect_hidden_representation(model, dataloader):
 def choose_anchors(model, dataloader):
     data = next(iter(dataloader))
     print(data.graph_aux.shape)
-    dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     device = torch.device(dev)
     data.to(device)
     tmp_graph, tmp_tab, _, _ = model(data.x, data.edge_index, data.batch, data.graph_aux,
@@ -599,7 +593,6 @@ def awgn(signal, desired_snr, signal_power):
 def test_with_incremental_noise(model, dataloader, if_interpretable_model=True, mode='sharcs'):
     correct = 0
     correct_t = 0
-    dev = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device(dev)
     for data in dataloader:
         data.to(device)
@@ -621,7 +614,6 @@ def test_with_incremental_noise(model, dataloader, if_interpretable_model=True, 
 
 def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concepts_mod2, if_interpretable_model=True, mode='sharcs'):
     
-    dev = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device(dev)
     correct = 0
     correct_m= 0
