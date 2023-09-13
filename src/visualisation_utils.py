@@ -45,6 +45,7 @@ def plot_model_accuracy(train_accuracies, test_accuracies, model_name, path):
     plt.savefig(os.path.join(path, f"model_accuracy_plot.png"))
     wandb.log({'accuracy': wandb.Image(plt)})
     plt.show()
+    plt.close('all')
 
 
 def plot_model_loss(train_losses, test_losses, model_name, path):
@@ -58,6 +59,7 @@ def plot_model_loss(train_losses, test_losses, model_name, path):
     plt.savefig(os.path.join(path, f"model_loss_plot.png"))
     wandb.log({'loss': wandb.Image(plt)})
     plt.show()
+    plt.close('all')
 
 
 # should be called with concepts
@@ -138,6 +140,7 @@ def plot_clustering(seed, activation, y, centroids, centroid_labels, used_centro
     plt.savefig(os.path.join(path, f"DifferentialClustering_Raw_Layer{task}.pdf"))
     wandb.log({f'distribution_{task}': wandb.Image(plt)})
     plt.show()
+    plt.close()
 
 
 def plot_clustering_images_inside(seed, activation, centroids, images, used_centroid_labels, path, task="local", id_path="node"):
@@ -164,6 +167,7 @@ def plot_clustering_images_inside(seed, activation, centroids, images, used_cent
     plt.savefig(os.path.join(path, f"Shared_space.png"))
     plt.savefig(os.path.join(path, f"Shared_space.pdf"))
     plt.show()
+    plt.close()
 
 
 

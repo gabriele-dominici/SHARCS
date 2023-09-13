@@ -33,6 +33,7 @@ def test_graph_class(model, dataloader, if_interpretable_model=True, mode='sharc
     # enter evaluation mode
     correct = 0
     correct_t = 0
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device(dev)
     for data in dataloader:
         data.to(device)
@@ -47,8 +48,24 @@ def test_graph_class(model, dataloader, if_interpretable_model=True, mode='sharc
                 pred = out_t.argmax(dim=1)
                 correct_t += int((pred == data.y).sum())
                 continue
+        elif mode == 'VoteClassifier': 
+            _, _, out_g, out_t = model(data.x, data.edge_index, data.batch, data.graph_stats,
+                                                           data.graph_stats_clean)
+            val_1 = out_g.max(dim=1)
+            pred_1 = out_g.argmax(dim=1)
+            val_2 = out_t.max(dim=1)
+            pred_2 = out_t.argmax(dim=1)
+            result = val_1.values > val_2.values
+            a_filt = pred_1[result]
+            b_filt = pred_2[~result]
+            pred = torch.cat([a_filt, b_filt], dim=0)
+            l_1 = data.y[result]
+            l_2 = data.y[~result]
+            labels = torch.cat([l_1, l_2], dim=0)
+            correct += int((pred == data.y).sum())
+            continue
         else:
-            if mode == 'vanilla':
+            if mode in ['vanilla', 'late_fus_sum']:
                 concepts_gnn, concepts_tab, out, _ = model(data.x, data.edge_index, data.batch, data.graph_stats,
                                                            data.graph_stats_clean)
             elif mode == 'single_vanilla' or mode == 'anchors':
@@ -69,6 +86,7 @@ def test_graph_class(model, dataloader, if_interpretable_model=True, mode='sharc
 
 def train_graph_class(model, train_loader, test_loader, epochs, lr, if_interpretable_model=True, mode='sharcs'):
     # register hooks to track activation
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
     model = model_utils.register_hooks(model)
     device = torch.device(dev)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -108,7 +126,7 @@ def train_graph_class(model, train_loader, test_loader, epochs, lr, if_interpret
                     one_hot = torch.nn.functional.one_hot(data.y, num_classes=2).type_as(out)
                     loss = criterion(out, one_hot)
             else:
-                if mode == 'vanilla':
+                if mode in ['vanilla', 'late_fus_sum']:
                     concepts_gnn, concepts_tab, out, d = model(data.x, data.edge_index, data.batch, data.graph_stats,
                                                                data.graph_stats_clean)
                     one_hot = torch.nn.functional.one_hot(data.y, num_classes=2).type_as(out)
@@ -137,7 +155,10 @@ def train_graph_class(model, train_loader, test_loader, epochs, lr, if_interpret
             train_acc_g, train_acc_t = test_graph_class(model, train_loader, if_interpretable_model=if_interpretable_model, mode=mode)
             test_acc_g, test_acc_t = test_graph_class(model, test_loader, if_interpretable_model=if_interpretable_model, mode=mode)
             train_acc = train_acc_g
-            test_acc = test_acc_g
+            if mode == 'single_vanilla':
+                test_acc = test_graph_class(model, test_loader, if_interpretable_model=if_interpretable_model, mode='VoteClassifier')
+            else:
+                test_acc = test_acc_g
         else:
             train_acc = test_graph_class(model, train_loader, if_interpretable_model=if_interpretable_model, mode=mode)
             test_acc = test_graph_class(model, test_loader, if_interpretable_model=if_interpretable_model, mode=mode)
@@ -168,7 +189,7 @@ def train_graph_class(model, train_loader, test_loader, epochs, lr, if_interpret
         test_loss.append(test_running_loss / test_num_batches)
 
 
-        if mode in ['single_CBM', 'single_vanilla', 'anchors']:
+        if mode in ['single_CBM', 'anchors']:
             print(
                 'Epoch: {:03d}, Train Loss: {:.5f}, Test Loss: {:.5f}, Graph Acc: {:.5f}, Tab Acc: {:.5f}, Dist:{:.5f}'.
                 format(epoch, train_loss[-1], test_loss[-1], test_acc_g, test_acc_t, train_d[-1]), end="\r")
@@ -286,6 +307,8 @@ def save_centroids(centroids, y, used_centroid_labels, union_concepts,
         plt.title(tab, fontsize=10)
         nx.draw(tg[0])
         plt.savefig(f'{path}/{c}.svg')
+        plt.close()
+    plt.close('all')
 
 
 
@@ -370,6 +393,7 @@ def plot_samples(clustering_model, data, batch, y, k, num_nodes_view, edges, all
     plt.savefig(os.path.join(path, f"{task}_g_concepts.png"))
     wandb.log({task: wandb.Image(plt)})
     plt.show()
+    plt.close('all')
 
     return top_plot, top_concepts
 
@@ -410,6 +434,8 @@ def print_near_example(o_concepts, x_o, g_concepts, x_g, edges, batch, y, path, 
     plt.savefig(os.path.join(path, f"similar_tab.png"))
     wandb.log({'similar_tab': wandb.Image(plt)})
     plt.show()
+    plt.close()
+    plt.close('all')
 
     figure = plt.figure(figsize=(18, 3 * times + 2))
     image_indexes = []
@@ -443,6 +469,8 @@ def print_near_example(o_concepts, x_o, g_concepts, x_g, edges, batch, y, path, 
     plt.savefig(os.path.join(path, f"similar_g.png"))
     wandb.log({'similar_g': wandb.Image(plt)})
     plt.show()
+    plt.close()
+    plt.close('all')
 
 def retreived_similar(mod, similar_concepts):
     d = nn.PairwiseDistance(p=2)
@@ -456,6 +484,7 @@ def retreived_similar(mod, similar_concepts):
     return retreived
 
 def test_missing_modality(dataloader, model, concepts_mod1, concepts_mod2):
+    dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     device = torch.device(dev)
     correct = 0
     print('----MISSING MOD 1----')
@@ -484,6 +513,7 @@ def test_missing_modality(dataloader, model, concepts_mod1, concepts_mod2):
     return acc1, acc2
 
 def test_missing_modality_anchors(dataloader, model, pred_model, concepts_mod1, concepts_mod2, anchors_mod1, anchors_mod2):
+    dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     device = torch.device(dev)
     correct = 0
     print('----MISSING MOD 1----')
@@ -516,6 +546,7 @@ def test_missing_modality_anchors(dataloader, model, pred_model, concepts_mod1, 
 
 def collect_hidden_representation(model, dataloader):
     model.eval()
+    dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     device = torch.device(dev)
     tab = []
     graph = []
@@ -535,6 +566,7 @@ def collect_hidden_representation(model, dataloader):
 def choose_anchors(model, dataloader):
     data = next(iter(dataloader))
     print(data.graph_aux.shape)
+    dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     device = torch.device(dev)
     data.to(device)
     tmp_graph, tmp_tab, _, _ = model(data.x, data.edge_index, data.batch, data.graph_aux,
@@ -548,6 +580,113 @@ def compute_relative_rep(mod, anchors):
             tmp = cos(mod, t).unsqueeze(dim=-1)
             result = torch.cat((result, tmp), dim=-1)
         return result
+
+def awgn(signal, desired_snr, signal_power):
+    """
+    Add AWGN to the input signal to achieve the desired SNR level.
+    """
+    # Calculate the noise power based on the desired SNR and signal power
+    noise_power = signal_power / (10**(desired_snr / 10))
+    
+    # Generate the noise with the calculated power
+    noise = np.random.normal(0, np.sqrt(noise_power), len(signal))
+    
+    # Add the noise to the original signal
+    noisy_signal = signal + torch.Tensor(noise)
+    
+    return noisy_signal
+
+def test_with_incremental_noise(model, dataloader, if_interpretable_model=True, mode='sharcs'):
+    correct = 0
+    correct_t = 0
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device(dev)
+    for data in dataloader:
+        data.to(device)
+        data.graph_stats = awgn(data.graph_stats, 5, 1)
+        if if_interpretable_model:
+            if mode != 'single_CBM':
+                concepts_gnn, concepts_tab, out, _ = model(data.x, data.edge_index, data.batch, data.graph_stats, data.graph_stats_clean, noise="mod1")
+                concepts_gnn, concepts_tab, out2, _ = model(data.x, data.edge_index, data.batch, data.graph_stats, data.graph_stats_clean, noise="mod2")
+            else:
+                raise NotImplementedError
+        else:
+            raise NotImplementedError
+        pred = out.argmax(dim=1)
+        correct += int((pred == data.y).sum())
+        pred_t = out2.argmax(dim=1)
+        correct_t += int((pred_t == data.y).sum())
+
+    return correct / len(dataloader.dataset), correct_t / len(dataloader.dataset)
+
+def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concepts_mod2, if_interpretable_model=True, mode='sharcs'):
+    
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device(dev)
+    correct = 0
+    correct_m= 0
+    correct2 = 0
+    correct_m2= 0
+    p = int(n_concepts/2)
+    for data in dataloader:
+        data.to(device)
+        if if_interpretable_model:
+            if mode != 'single_CBM':
+                concepts_gnn_noise, concepts_tab_noise, out, _ = model(data.x, data.edge_index, data.batch, data.graph_stats, data.graph_stats_clean, noise="mod1")
+                concepts_gnn_noise2, concepts_tab_noise2, out2, _ = model(data.x, data.edge_index, data.batch, data.graph_stats, data.graph_stats_clean, noise="mod2")
+                concepts_gnn, concepts_tab, out, _ = model(data.x, data.edge_index, data.batch, data.graph_stats, data.graph_stats_clean)
+                concepts_noise = torch.cat([concepts_gnn_noise, concepts_tab_noise], dim=-1)
+                concepts_noise2 = torch.cat([concepts_gnn_noise2, concepts_tab_noise2], dim=-1)
+                concepts = torch.cat([concepts_gnn, concepts_tab], dim=-1)
+                
+                tab, tab_aux = model(data.graph_aux, data.edge_index, data.batch, data.graph_stats,
+                                    data.graph_stats_clean, missing=True, mod1=True)
+                retreived_graph = retreived_similar(tab_aux, concepts_mod1)
+                concepts_retrieved1 = torch.cat([retreived_graph, tab], dim=-1)
+                concepts_noise_missing_mod1 = concepts_noise.clone()
+                
+                graph, graph_aux = model(data.x, data.edge_index, data.x_batch, data.x_tab,
+                             data.graph_stats_clean, missing=True, mod2=True, aux_edge=data.aux_edge_index, batch_aux=data.x_tab_batch)
+                retreived_tab = retreived_similar(graph_aux, concepts_mod2)
+                concepts_retrieved2 = torch.cat([graph, retreived_tab], dim=-1)
+                concepts_noise_missing_mod2 = concepts_noise2.clone()
+                
+                # change p random values in concepts_noise according to concepts
+                c = np.random.choice(n_concepts, p, replace=False)
+                for i in c:
+                    concepts_noise[:, i] = concepts[:, i]
+                    concepts_noise_missing_mod1[:, i] = concepts_retrieved1[:, i]
+                    concepts_noise2[:, i+n_concepts] = concepts[:, i+n_concepts]
+                    concepts_noise_missing_mod2[:, i+n_concepts] = concepts_retrieved2[:, i+n_concepts]
+                    
+                g_concepts = concepts_noise[:, :int(concepts_noise.shape[1] / 2)]
+                t_concepts = concepts_noise[:, int(concepts_noise.shape[1] / 2):]
+                concepts_gnn, concepts_tab, out, _ = model(g_concepts, data.edge_index, data.batch, t_concepts, data.graph_stats_clean, missing=True, prediction=True)
+                g_concepts = concepts_noise2[:, :int(concepts_noise2.shape[1] / 2)]
+                t_concepts = concepts_noise2[:, int(concepts_noise2.shape[1] / 2):]
+                concepts_gnn, concepts_tab, out2, _ = model(g_concepts, data.edge_index, data.batch, t_concepts, data.graph_stats_clean, missing=True, prediction=True)
+                
+                g_concepts_missing_mod = concepts_noise_missing_mod1[:, :int(concepts_noise_missing_mod1.shape[1] / 2)]
+                t_concepts_missing_mod = concepts_noise_missing_mod1[:, int(concepts_noise_missing_mod1.shape[1] / 2):]
+                concepts_gnn_missing_mod, concepts_tab_missing_mod, out_missing_mod, _ = model(g_concepts_missing_mod, data.edge_index, data.batch, t_concepts_missing_mod, data.graph_stats_clean, missing=True, prediction=True)
+                g_concepts_missing_mod = concepts_noise_missing_mod2[:, :int(concepts_noise_missing_mod2.shape[1] / 2)]
+                t_concepts_missing_mod = concepts_noise_missing_mod2[:, int(concepts_noise_missing_mod2.shape[1] / 2):]
+                concepts_gnn_missing_mod, concepts_tab_missing_mod, out_missing_mod2, _ = model(g_concepts_missing_mod, data.edge_index, data.batch, t_concepts_missing_mod, data.graph_stats_clean, missing=True, prediction=True)
+            else:
+                raise Exception('Not implemented')
+        else:
+            raise Exception('Not implemented')
+        pred = out.argmax(dim=1)
+        correct += int((pred == data.y).sum())
+        pred_missing = out_missing_mod.argmax(dim=1)
+        correct_m += int((pred_missing == data.y).sum())
+
+        pred2 = out2.argmax(dim=1)
+        correct2 += int((pred2 == data.y).sum())
+        pred_missing2 = out_missing_mod2.argmax(dim=1)
+        correct_m2 += int((pred_missing2 == data.y).sum())
+
+    return correct / len(dataloader.dataset), correct_m / len(dataloader.dataset), correct2 / len(dataloader.dataset), correct_m2 / len(dataloader.dataset)
 
 def main():
     tag = 'xor'
@@ -624,6 +763,10 @@ def main():
     # model training
     if MODE == 'vanilla':
         model = models.Tab_Graph_Vanilla(train_set[0].num_node_features, train_set[0].graph_stats.shape[-1], NUM_HIDDEN_UNITS,
+                                 NUM_HIDDEN_UNITS, CLUSTER_ENCODING_SIZE, NUM_CLASSES)
+        interpretable = False
+    elif MODE == 'late_fus_sum':
+        model = models.Tab_Graph_Vanilla_LateFusion(train_set[0].num_node_features, train_set[0].graph_stats.shape[-1], NUM_HIDDEN_UNITS,
                                  NUM_HIDDEN_UNITS, CLUSTER_ENCODING_SIZE, NUM_CLASSES)
         interpretable = False
     elif MODE == 'single_vanilla' or MODE == 'anchors':
@@ -825,7 +968,8 @@ def main():
 
         # calculate cluster sizing
         cluster_counts = visualisation_utils.print_cluster_counts(used_centroid_labels)
-        classifier = models.ActivationClassifierConcepts(y, used_centroid_labels, train_mask, test_mask)
+        concepts_g_local_tree = (concepts_g_local.detach().numpy() > 0.5).astype(int)
+        classifier = models.ActivationClassifierConcepts(y, concepts_g_local_tree, train_mask, test_mask)
 
         print(f"Classifier Concept completeness score: {classifier.accuracy}")
         concept_metrics = [('cluster_count', cluster_counts)]
@@ -858,7 +1002,8 @@ def main():
 
         # calculate cluster sizing
         cluster_counts = visualisation_utils.print_cluster_counts(used_centroid_labels)
-        classifier = models.ActivationClassifierConcepts(y, used_centroid_labels, train_mask, test_mask)
+        concepts_tab_local_tree = (concepts_tab_local.detach().numpy() > 0.5).astype(int)
+        classifier = models.ActivationClassifierConcepts(y, concepts_tab_local_tree, train_mask, test_mask)
 
         print(f"Classifier Concept completeness score: {classifier.accuracy}")
         concept_metrics = [('cluster_count', cluster_counts)]
@@ -893,7 +1038,8 @@ def main():
             cluster_counts = visualisation_utils.print_cluster_counts(used_centroid_labels)
             train_mask_double = np.concatenate((train_mask, train_mask), axis=0)
             test_mask_double = np.concatenate((test_mask, test_mask), axis=0)
-            classifier = models.ActivationClassifierConcepts(y_double, used_centroid_labels, train_mask_double, test_mask_double)
+            concepts_tree = (concepts.detach().numpy() > 0.5).astype(int)
+            classifier = models.ActivationClassifierConcepts(y_double, concepts_tree, train_mask_double, test_mask_double)
             # concept alignment
 
             print(f"Classifier Concept completeness score: {classifier.accuracy}")
@@ -947,22 +1093,16 @@ def main():
 
             # calculate cluster sizing
             cluster_counts = visualisation_utils.print_cluster_counts(used_centroid_labels)
+            union_concepts_tree = (union_concepts.detach().numpy() > 0.5).astype(int)
+            classifier = models.ActivationClassifierConcepts(y, union_concepts_tree, train_mask, test_mask)
 
-            classifier = models.ActivationClassifierConcepts(y, used_centroid_labels, train_mask, test_mask)
-
-            save_centroids(centroids, y, used_centroid_labels, union_concepts,
-                           g_concepts, expanded_batch, edges_t,
-                           t_concepts, x_tab,
-                           path)
-            classifier.plot2(path)
+            # save_centroids(centroids, y, used_centroid_labels, union_concepts,
+            #                g_concepts, expanded_batch, edges_t,
+            #                t_concepts, x_tab,
+            #                path)
+            classifier.plot2(path, [union_concepts.detach(), y, expanded_batch, edges_t, x_tab, path])
 
             # concept alignment
-
-
-            homogeneity = homogeneity_score(y, used_centroid_labels)
-
-            # clustering efficency
-            completeness = completeness_score(y, used_centroid_labels)
 
             print(f"Classifier Concept completeness score: {classifier.accuracy}")
             concept_metrics = [('cluster_count', cluster_counts)]
@@ -975,9 +1115,19 @@ def main():
             # plot clustering
             visualisation_utils.plot_clustering(seed, union_concepts.detach(), y, centroids, centroid_labels, used_centroid_labels, MODEL_NAME, LAYER_NUM, path, task="combined", id_path="_graph",
                                                 extra=True, train_mask=train_mask, test_mask=test_mask, n_classes=NUM_CLASSES)
+            
+            acc_noise1, acc_noise2 = test_with_incremental_noise(model, full_test_loader, if_interpretable_model=interpretable, mode=MODE)
+            wandb.log({'noise accuracy mod1': acc_noise1, 'noise accuracy mod2': acc_noise2})
+            print(f'Noise accuracy mod1: {acc_noise1}, mod2: {acc_noise2}')
+
+            acc_int_gt1, acc_int_mod1, acc_int_gt2, acc_int_mod2 = test_with_interventions(model, t_concepts.shape[-1], test_loader, g_concepts, t_concepts, if_interpretable_model=interpretable, mode=MODE)
+            wandb.log({'interventions accuracy latent mod1': acc_int_gt1, 'interventions accuracy missing modality1': acc_int_mod1, 
+                       'interventions accuracy latent mod2': acc_int_gt2, 'interventions accuracy missing modality2': acc_int_mod2})
+            print(f'Interventions accuracy mod 1: {acc_int_gt1}, {acc_int_mod1}, mod 2: {acc_int_gt2}, {acc_int_mod2}')
+
 
     # clean up
-    plt.close()
+    plt.close('all')
 
     return model_to_return
 

@@ -282,7 +282,6 @@ def plot_samples(clustering_model, data, num_nodes_view, questions, all_concepts
                     im = matplotlib.image.imread(f"./images/clevr_{i}_txt.png")
                     top_plot += [im]
                     plt.close()
-                    plt.ion()
                 counter += 1
             print('-------')
         elif mod == 'image':
@@ -306,7 +305,7 @@ def plot_samples(clustering_model, data, num_nodes_view, questions, all_concepts
                 plt.axis('off')
                 counter += 1
                 plt.close()
-                plt.ion()
+    plt.close('all')
 
 
     plt.savefig(os.path.join(path, f"{task}_g_concepts.pdf"))
@@ -328,7 +327,7 @@ def plot_samples(clustering_model, data, num_nodes_view, questions, all_concepts
             im = matplotlib.image.imread(f"./images/clevr_{index}_image.png")
             top_plot += [im]
             plt.close()
-            plt.ion()
+    plt.close('all')
 
     return top_plot, top_concepts
 
@@ -358,7 +357,7 @@ def save_centroids(centroids, y, used_centroid_labels, union_concepts,
 
         plt.savefig(f'{path}/{c}.svg')
         plt.close()
-        plt.ion()
+    plt.close('all')
 
 def plot_combined_samples(clustering_model, data, y, num_nodes_view, questions, images_idx, images, all_concepts, path, concepts=None, task='combined'):
 
@@ -736,6 +735,112 @@ def test_missing_modality_anchors(dataloader, model, pred_model, concepts_mod1, 
     acc2 = correct / len(dataloader.dataset)
     return acc1, acc2
 
+    def test_with_incremental_noise(model, dataloader, if_interpretable_model=True, mode='sharcs'):
+        correct = 0
+        correct_t = 0
+        device = torch.device(dev)
+        for input_image, input_text, _, _, y, _, _, _ in dataloader:
+            input_image = input_image.to(device)
+            input_text = input_text.to(device)
+            y = y.to(device)
+            if if_interpretable_model:
+                if mode != 'single_CBM':
+                    concepts_gnn, concepts_tab, out, _, _, _ = model(input_text, input_image, train_y, noise="mod1")
+                    concepts_gnn, concepts_tab, out2, _, _, _ = model(input_text, input_image, train_y, noise="mod2")
+                else:
+                    raise NotImplementedError
+            else:
+                raise NotImplementedError
+            pred = out.argmax(dim=1)
+            correct += int((pred == y).sum())
+            pred_t = out2.argmax(dim=1)
+            correct_t += int((pred_t == y).sum())
+
+        return correct / len(dataloader.dataset), correct_t / len(dataloader.dataset)
+
+    def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concepts_mod2, if_interpretable_model=True, mode='sharcs'):
+        device = torch.device(dev)
+        correct = 0
+        correct_m= 0
+        correct2 = 0
+        correct_m2= 0
+        p = int(n_concepts/2)
+        for input_image, input_text, _, _, y, image_aux, sentence_aux, _ in dataloader:
+            input_image = input_image.to(device)
+            input_text = input_text.to(device)
+            y = y.to(device)
+            if if_interpretable_model:
+                if mode != 'single_CBM':
+                    concepts_gnn_noise, concepts_tab_noise, out, _, _, _ = model(input_text, input_image, train_y, noise="mod2")
+                    concepts_gnn_noise2, concepts_tab_noise2, out2, _, _, _ = model(input_text, input_image, train_y, noise="mod1")
+                    concepts_gnn, concepts_tab, out, _, _, _ = model(input_text, input_image, train_y)
+                    concepts_noise = torch.cat([concepts_gnn_noise, concepts_tab_noise], dim=-1)
+                    concepts_noise2 = torch.cat([concepts_gnn_noise2, concepts_tab_noise2], dim=-1)
+                    concepts = torch.cat([concepts_gnn, concepts_tab], dim=-1)
+                    
+                    filter = (sentence_aux != (torch.zeros(input_text[0].shape)-1)).all(dim=1)
+                    sentence_aux_mod1 = sentence_aux[filter]
+                    input_text_mod1 = input_text[filter]
+                    y_mod1 = y[filter]
+                    input_image_mod1 = sentence_aux_mod1.to(device)
+                    input_text_mod1 = input_text_mod1.to(device)
+                    y_mod1 = y_mod1.to(device)
+                    text, text_aux = model(input_text_mod1, input_image_mod1, y_mod1, missing=True, mod1=True)
+                    retreived_image = retreived_similar(text_aux.detach().cpu(), concepts_mod2)
+                    retreived_image = retreived_image.to(device)
+                    concepts_retrieved1 = torch.cat([text, retreived_image], dim=-1)
+                    concepts_noise_missing_mod1 = concepts_noise.clone()
+
+                    filter = torch.flatten((img_aux != (torch.zeros(input_image[0].shape)-1)), start_dim=1).all(dim=-1)
+                    img_aux_mod2 = img_aux[filter]
+                    input_image_mod2 = input_image[filter]
+                    y_mod2 = y[filter]
+                    input_image_mod2 = input_image_mod2.to(device)
+                    input_text_mod2 = img_aux_mod2.to(device)
+                    y_mod2 = y_mod2.to(device)
+                    img, img_aux = model(input_text_mod2, input_image_mod2, y_mod2, missing=True, mod2=True)
+                    retreived_text = retreived_similar(img_aux.detach().cpu(), concepts_mod1)
+                    retreived_text = retreived_text.to(device)
+                    concepts_retrieved2 = torch.cat([retreived_text, img], dim=-1)
+                    concepts_noise_missing_mod2 = concepts_noise2.clone()
+                    
+                    # change p random values in concepts_noise according to concepts
+                    c = np.random.choice(n_concepts, p, replace=False)
+                    for i in c:
+                        concepts_noise[:, i] = concepts[:, i]
+                        concepts_noise_missing_mod1[:, i] = concepts_retrieved1[:, i]
+                        concepts_noise2[:, i+n_concepts] = concepts[:, i+n_concepts]
+                        concepts_noise_missing_mod2[:, i+n_concepts] = concepts_retrieved2[:, i+n_concepts]
+                        
+                    g_concepts = concepts_noise[:, :int(concepts_noise.shape[1] / 2)]
+                    t_concepts = concepts_noise[:, int(concepts_noise.shape[1] / 2):]
+                    concepts_gnn, concepts_tab, out, _ = model(g_concepts, t_concepts, y, missing=True, prediction=True)
+                    g_concepts = concepts_noise2[:, :int(concepts_noise2.shape[1] / 2)]
+                    t_concepts = concepts_noise2[:, int(concepts_noise2.shape[1] / 2):]
+                    concepts_gnn, concepts_tab, out2, _ = model(g_concepts, t_concepts, y, missing=True, prediction=True)
+                    
+                    g_concepts_missing_mod = concepts_noise_missing_mod1[:, :int(concepts_noise_missing_mod1.shape[1] / 2)]
+                    t_concepts_missing_mod = concepts_noise_missing_mod1[:, int(concepts_noise_missing_mod1.shape[1] / 2):]
+                    concepts_gnn_missing_mod, concepts_tab_missing_mod, out_missing_mod, _ = model(g_concepts_missing_mod, t_concepts_missing_mod, y_mod1, missing=True, prediction=True)
+                    g_concepts_missing_mod = concepts_noise_missing_mod2[:, :int(concepts_noise_missing_mod2.shape[1] / 2)]
+                    t_concepts_missing_mod = concepts_noise_missing_mod2[:, int(concepts_noise_missing_mod2.shape[1] / 2):]
+                    concepts_gnn_missing_mod, concepts_tab_missing_mod, out_missing_mod2, _ = model(g_concepts_missing_mod, t_concepts_missing_mod, y_mod2, missing=True, prediction=True)
+                else:
+                    raise Exception('Not implemented')
+            else:
+                raise Exception('Not implemented')
+            pred = out.argmax(dim=1)
+            correct += int((pred == y).sum())
+            pred_missing = out_missing_mod.argmax(dim=1)
+            correct_m += int((pred_missing == y_mod1).sum())
+
+            pred2 = out2.argmax(dim=1)
+            correct2 += int((pred2 == y).sum())
+            pred_missing2 = out_missing_mod2.argmax(dim=1)
+            correct_m2 += int((pred_missing2 == y_mod2).sum())
+
+        return correct / len(dataloader.dataset), correct_m / len(dataloader.dataset), correct2 / len(dataloader.dataset), correct_m2 / len(dataloader.dataset)
+
 
 def main():
     tag = 'clevr'
@@ -998,7 +1103,8 @@ def main():
 
         # calculate cluster sizing
         cluster_counts = visualisation_utils.print_cluster_counts(used_centroid_labels)
-        classifier = models.ActivationClassifierConcepts(y, used_centroid_labels, train_mask, test_mask)
+        concepts_g_local_tree = (concepts_g_local.detach().numpy() > 0.5).astype(int)
+        classifier = models.ActivationClassifierConcepts(y, concepts_g_local_tree, train_mask, test_mask)
 
         print(f"Classifier Concept completeness score: {classifier.accuracy}")
         concept_metrics = [('cluster_count', cluster_counts)]
@@ -1029,7 +1135,8 @@ def main():
 
         # calculate cluster sizing
         cluster_counts = visualisation_utils.print_cluster_counts(used_centroid_labels)
-        classifier = models.ActivationClassifierConcepts(y, used_centroid_labels, train_mask, test_mask)
+        concepts_g_img_local_tree = (concepts_g_img_local.detach().numpy() > 0.5).astype(int)
+        classifier = models.ActivationClassifierConcepts(y, concepts_g_img_local_tree, train_mask, test_mask)
 
         print(f"Classifier Concept completeness score: {classifier.accuracy}")
         concept_metrics = [('cluster_count', cluster_counts)]
@@ -1064,8 +1171,8 @@ def main():
             cluster_counts = visualisation_utils.print_cluster_counts(used_centroid_labels)
             train_mask_double = np.concatenate((train_mask, train_mask), axis=0)
             test_mask_double = np.concatenate((test_mask, test_mask), axis=0)
-            classifier = models.ActivationClassifierConcepts(y_double, used_centroid_labels, train_mask_double,
-                                                             test_mask_double)
+            concept_tree = (concepts.detach().numpy() > 0.5).astype(int)
+            classifier = models.ActivationClassifierConcepts(y_double, concept_tree, train_mask_double, test_mask_double)
 
             print(f"Classifier Concept completeness score: {classifier.accuracy}")
             concept_metrics = [('cluster_count', cluster_counts)]
@@ -1112,21 +1219,34 @@ def main():
             # calculate cluster sizing
             cluster_counts = visualisation_utils.print_cluster_counts(used_centroid_labels)
 
-            classifier = models.ActivationClassifierConcepts(y, used_centroid_labels, train_mask, test_mask)
-
-            save_centroids(centroids, y, used_centroid_labels, union_concepts,
-                           g_concepts, questions,
-                           t_concepts, idx,
-                           path)
-            classifier.plot2(path)
-
+            union_concepts_tree = (union_concepts.detach().numpy() > 0.5).astype(int)
+            classifier = models.ActivationClassifierConcepts(y, union_concepts_tree, train_mask, test_mask)
+            
             print(f"Classifier Concept completeness score: {classifier.accuracy}")
             concept_metrics = [('cluster_count', cluster_counts)]
             persistence_utils.persist_experiment(concept_metrics, path, 'graph_concept_metrics.z')
             wandb.log({'combined completeness': classifier.accuracy, 'num clusters combined': len(centroids)})
 
-            classifier = models.ActivationClassifierConcepts(y, used_centroid_labels, train_mask, test_mask, max_depth=5)
-            classifier.plot2(path, integer=3)
+            acc_noise1, acc_noise2 = test_with_incremental_noise(model, full_test_loader, if_interpretable_model=interpretable, mode=MODE)
+            wandb.log({'noise accuracy mod1': acc_noise1, 'noise accuracy mod2': acc_noise2})
+            print(f'Noise accuracy mod1: {acc_noise1}, mod2: {acc_noise2}')
+
+            acc_int_gt1, acc_int_mod1, acc_int_gt2, acc_int_mod2 = test_with_interventions(model, t_concepts.shape[-1], test_loader, g_concepts, t_concepts, if_interpretable_model=interpretable, mode=MODE)
+            wandb.log({'interventions accuracy latent mod1': acc_int_gt1, 'interventions accuracy missing modality1': acc_int_mod1, 
+                       'interventions accuracy latent mod2': acc_int_gt2, 'interventions accuracy missing modality2': acc_int_mod2})
+            print(f'Interventions accuracy mod 1: {acc_int_gt1}, {acc_int_mod1}, mod 2: {acc_int_gt2}, {acc_int_mod2}')
+
+            classifier.plot2(path, [union_concepts.detach(), y, None, idx, questions, path], integer=3, mode='clevr')
+
+            classifier = models.ActivationClassifierConcepts(y, union_concepts_tree, train_mask, test_mask,
+                                                             max_depth=5)
+
+            print(f"Classifier Concept completeness score: {classifier.accuracy}")
+            concept_metrics = [('cluster_count', cluster_counts)]
+            persistence_utils.persist_experiment(concept_metrics, path, 'graph_concept_metrics.z')
+            wandb.log({'combined completeness 2': classifier.accuracy})
+
+            classifier.plot2(path, [union_concepts.detach(), y, None, idx, questions, path], integer=3, mode='clevr')
 
             concept_metrics = [('cluster_count', cluster_counts)]
             persistence_utils.persist_experiment(concept_metrics, path, 'graph_concept_metrics.z')
@@ -1152,7 +1272,7 @@ def main():
             plot_combined_samples(None, union_concepts, y, 5, questions, idx, None, union_concepts.detach().cpu().numpy(),
                               path, concepts=centroids)
     # clean up
-    plt.close()
+    plt.close('all')
 
     return model_to_return
 

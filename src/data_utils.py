@@ -386,6 +386,7 @@ class Scale(object):
                 return img.resize((ow, oh), self.interpolation)
         else:
             return img.resize(self.size, self.interpolation)
+        
 class Anchors(Dataset):
     def __init__(self, mod1, mod2, y):
         super(Dataset, self).__init__()
@@ -491,13 +492,19 @@ class HALFMNIST(Dataset):
                     y_g=self.graphs[index].y,
                     up_down=self.up_down[index])
 
+
 class MNIST_SUPERPIXELS2(Dataset):
-    def __init__(self, graphs, images, images_aux, graphs_aux, labels_img, mask):
+    def __init__(self, graphs, images, images_aux, graphs_aux, labels_img, mask, noise=False):
         super(Dataset, self).__init__()
         self.graphs_aux = [ele for i, ele in enumerate(graphs_aux) if mask[i]]
         self.graphs = [ele for i, ele in enumerate(graphs) if mask[i]]
         self.images_aux = torch.Tensor(images_aux)[mask]
         self.images = torch.Tensor(images)[mask]
+        if noise:
+            self.images_aux = self.images_aux + torch.normal(mean=0, std=128, size=self.images_aux.shape)
+            self.images_aux = torch.clamp(self.images_aux, min=0, max=255)
+            self.images = self.images + torch.normal(mean=0, std=128, size=self.images.shape)
+            self.images = torch.clamp(self.images, min=0, max=255)
         self.labels_img = torch.Tensor(labels_img)[mask].long()
 
     def __len__(self):

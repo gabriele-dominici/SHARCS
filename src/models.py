@@ -29,6 +29,12 @@ import math
 import random
 import wandb
 
+def add_noise(x):
+    x = x + torch.normal(mean=0, std=0.25, size=x.shape)
+    x = torch.clamp(x, min=0, max=1)
+
+    return x
+
 class Tab_Graph(nn.Module):
     def __init__(self, num_in_features_gnn, num_in_features,
                  num_hidden_features_gnn, num_hidden_features,
@@ -226,7 +232,7 @@ class Tab_Graph_missing(nn.Module):
         return d(x_tab_anchors, x_graph_anchors).mean()
 
     def forward(self, x, edge_index, batch, x_tab, clean_features,
-                missing=False, mod1=False, mod2=False, aux_edge=None, batch_aux=None, prediction=False):
+                missing=False, mod1=False, mod2=False, aux_edge=None, batch_aux=None, prediction=False, noise=None):
 
         if not missing:
             x_tab = x_tab.reshape(batch[-1] + 1, self.num_in_features)
@@ -259,6 +265,9 @@ class Tab_Graph_missing(nn.Module):
             x = self.batch_norm_g_1(x)
             x = F.sigmoid(x * 5)
 
+            if noise == 'mod1':
+                x = add_noise(x)
+
             self.gnn_graph_local_concepts = x
 
             x = self.projection_graph(x)
@@ -269,6 +278,9 @@ class Tab_Graph_missing(nn.Module):
 
             tab = self.batch_norm_img_1(tab)
             tab = F.sigmoid(tab * 5)
+
+            if noise == 'mod2':
+                tab = add_noise(tab)
 
             self.x_tab_local_concepts = tab
 
@@ -642,7 +654,7 @@ class Tab_Graph_MultiCBM(nn.Module):
         return d(x_tab_anchors, x_graph_anchors).mean()
 
     def forward(self, x, edge_index, batch, x_tab, clean_features,
-                missing=False, mod1=False, mod2=False, aux_edge=None, batch_aux=None, prediction=False):
+                missing=False, mod1=False, mod2=False, aux_edge=None, batch_aux=None, prediction=False, noise=None):
 
         if not missing:
             x_tab = x_tab.reshape(batch[-1]+1, self.num_in_features)
@@ -675,6 +687,9 @@ class Tab_Graph_MultiCBM(nn.Module):
             x = self.batch_norm_g_1(x)
             x = F.sigmoid(x*5)
 
+            if noise == 'mod1':
+                x = add_noise(x)
+
             self.gnn_graph_local_concepts = x
 
             tab = self.mlp(x_tab)
@@ -683,6 +698,9 @@ class Tab_Graph_MultiCBM(nn.Module):
 
             tab = self.batch_norm_img_1(tab)
             tab = F.sigmoid(tab*5)
+
+            if noise == 'mod2':
+                tab = add_noise(tab)
 
             self.x_tab_local_concepts = tab
 
@@ -904,6 +922,71 @@ class Tab_Graph_Vanilla(nn.Module):
         d = 0
 
         return self.gnn_graph_shared_concepts, self.tab_shared_concepts, out, d
+
+class Tab_Graph_Vanilla_LateFusion(nn.Module):
+    def __init__(self, num_in_features_gnn, num_in_features,
+                 num_hidden_features_gnn, num_hidden_features,
+                 cluster_encoding_size, num_classes):
+        super(Tab_Graph_Vanilla_LateFusion, self).__init__()
+
+        self.num_in_features = num_in_features
+
+        self.conv0 = GCNConv(num_in_features_gnn, num_hidden_features_gnn)
+        self.conv1 = GCNConv(num_hidden_features_gnn, num_hidden_features_gnn)
+        self.conv2 = GCNConv(num_hidden_features_gnn, num_hidden_features_gnn)
+        self.conv4 = GCNConv(num_hidden_features_gnn, num_hidden_features_gnn)
+        self.conv3 = GCNConv(num_hidden_features_gnn, num_classes)
+
+        self.sum_pool = model_utils.SumPool()
+
+
+        # linear layers
+        self.mlp = nn.Sequential(nn.Linear(num_in_features, num_hidden_features),
+                                 nn.ReLU(),
+                                 nn.Linear(num_hidden_features, num_classes)
+                                 )
+
+
+    def forward(self, x, edge_index, batch, x_tab, clean_features):
+
+        x_tab = x_tab.reshape(batch[-1]+1, self.num_in_features)
+
+        x = self.conv0(x, edge_index)
+        x = F.leaky_relu(x)
+
+        x = self.conv1(x, edge_index)
+        x = F.leaky_relu(x)
+
+        x = self.conv2(x, edge_index)
+        x = F.leaky_relu(x)
+
+        x = self.conv4(x, edge_index)
+        x = F.leaky_relu(x)
+
+        x = self.conv3(x, edge_index)
+        x = F.leaky_relu(x)
+
+        x = x.squeeze()
+
+        x = self.sum_pool(x, batch)
+
+        self.gnn_graph_local_concepts = x
+
+
+        tab = self.mlp(x_tab)
+
+        self.x_tab_local_concepts = tab
+
+        self.gnn_graph_shared_concepts = x
+        self.tab_shared_concepts = tab
+
+        combined_concept = torch.cat((x, tab), dim=-1)
+
+        out = tab + x
+        d = 0
+
+        return self.gnn_graph_shared_concepts, self.tab_shared_concepts, out, d
+
 
 class Tab_Graph_Vanilla_single(nn.Module):
     def __init__(self, num_in_features_gnn, num_in_features,
@@ -1483,8 +1566,9 @@ class MNISTSuperpixels_missing(torch.nn.Module):
 
         return x_image
 
-    def forward(self, data, x_image, aux_image, anchors, y_g, y_img,
-                missing=False, mod1=False, mod2=False, prediction=False):
+    def forward(self, original_data, x_image, aux_image, anchors, y_g, y_img,
+                missing=False, mod1=False, mod2=False, prediction=False, noise=None):
+        data = original_data.clone()
         if not missing:
             data.x = F.elu(self.conv1(data.x, data.edge_index, data.edge_attr))
             weight = normalized_cut_2d(data.edge_index, data.pos)
@@ -1502,6 +1586,8 @@ class MNISTSuperpixels_missing(torch.nn.Module):
             x = global_add_pool(x, batch)
             x = self.batch_norm_g_1(x)
             x = F.sigmoid(x * 2)
+            if noise == 'mod1':
+                x = add_noise(x)
             self.gnn_graph_local_concepts = x
             self.gnn_graph_activations = None
             out_g = self.pred_g(x)
@@ -1511,6 +1597,8 @@ class MNISTSuperpixels_missing(torch.nn.Module):
             self.image_activations = x_image
             x_image = self.batch_norm_img_1(x_image)
             x_image = F.sigmoid(x_image * 2)
+            if noise == 'mod2':
+                x_image = add_noise(x_image)
             self.x_image_local_concepts = x_image
             out_img = self.pred_img(x_image)
 
@@ -1741,8 +1829,9 @@ class MNISTSuperpixels_MultiCBM(torch.nn.Module):
                                       nn.Linear(64, local_num_classes)
                                       )
 
-    def forward(self, data, x_image, aux_image, anchors, y_g, y_img,
-                missing=False, mod1=False, mod2=False, prediction=False):
+    def forward(self, original_data, x_image, aux_image, anchors, y_g, y_img,
+                missing=False, mod1=False, mod2=False, prediction=False, noise=None):
+        data = original_data.clone()
         if not missing:
             data.x = F.elu(self.conv1(data.x, data.edge_index, data.edge_attr))
             weight = normalized_cut_2d(data.edge_index, data.pos)
@@ -1760,6 +1849,8 @@ class MNISTSuperpixels_MultiCBM(torch.nn.Module):
             x = global_add_pool(x, batch)
             x = self.batch_norm_g_1(x)
             x = F.sigmoid(x * 2)
+            if noise == 'mod1':
+                x = add_noise(x)
             self.gnn_graph_local_concepts = x
             self.gnn_graph_activations = None
             out_g = self.pred_g(x)
@@ -1768,6 +1859,8 @@ class MNISTSuperpixels_MultiCBM(torch.nn.Module):
             self.image_activations = x_image
             x_image = self.batch_norm_img_1(x_image)
             x_image = F.sigmoid(x_image * 2)
+            if noise == 'mod2':
+                x_image = add_noise(x_image)
             self.x_image_local_concepts = x_image
             out_img = self.pred_img(x_image)
 
@@ -2590,8 +2683,9 @@ class HalfMnist_MultiCBM(torch.nn.Module):
                                       nn.Linear(64, local_num_classes)
                                       )
 
-    def forward(self, data, x_image, aux_image, anchors, y_g, y_img,
-                missing=False, mod1=False, mod2=False, prediction=False):
+    def forward(self, original_data, x_image, aux_image, anchors, y_g, y_img,
+                missing=False, mod1=False, mod2=False, prediction=False, noise=None):
+        data = original_data.clone()
         if not missing:
             up_down = data.up_down
             data.x = F.elu(self.conv1(data.x, data.edge_index, data.edge_attr))
@@ -2609,6 +2703,8 @@ class HalfMnist_MultiCBM(torch.nn.Module):
             x = global_add_pool(x, batch)
             x = self.batch_norm_g_1(x)
             x = F.sigmoid(x * 5)
+            if noise == 'mod1':
+                x = add_noise(x)
             self.gnn_graph_local_concepts = x
             self.gnn_graph_activations = None
             out_g = self.pred_g(x)
@@ -2617,6 +2713,8 @@ class HalfMnist_MultiCBM(torch.nn.Module):
             self.image_activations = x_image
             x_image = self.batch_norm_img_1(x_image)
             x_image = F.sigmoid(x_image * 2)
+            if noise == 'mod2':
+                x_image = add_noise(x_image)
             self.x_image_local_concepts = x_image
             out_img = self.pred_img(x_image)
 
@@ -2780,8 +2878,9 @@ class HalfMnist_missing(torch.nn.Module):
 
         return x_image
 
-    def forward(self, data, x_image, aux_image, anchors, y_g, y_img,
-                missing=False, mod1=False, mod2=False, prediction=False):
+    def forward(self, original_data, x_image, aux_image, anchors, y_g, y_img,
+                missing=False, mod1=False, mod2=False, prediction=False, noise=None):
+        data = original_data.clone()
         if not missing:
             up_down = data.up_down
             data.x = F.elu(self.conv1(data.x, data.edge_index, data.edge_attr))
@@ -2799,6 +2898,8 @@ class HalfMnist_missing(torch.nn.Module):
             x = global_add_pool(x, batch)
             x = self.batch_norm_g_1(x)
             x = F.sigmoid(x * 5)
+            if noise == 'mod1':
+                x = add_noise(x)
             self.gnn_graph_local_concepts = x
             self.gnn_graph_activations = None
             out_g = self.pred_g(x)
@@ -2808,6 +2909,8 @@ class HalfMnist_missing(torch.nn.Module):
             self.image_activations = x_image
             x_image = self.batch_norm_img_1(x_image)
             x_image = F.sigmoid(x_image * 2)
+            if noise == 'mod2':
+                x_image = add_noise(x_image)
             self.x_image_local_concepts = x_image
             out_img = self.pred_img(x_image)
 
@@ -2966,13 +3069,15 @@ class CLEVR_SHARCS(nn.Module):
 
         return d(x_tab_anchors, x_graph_anchors).mean()
 
-    def forward(self, x_text, x_image, y, missing=False, prediction=False, mod1=False, mod2=False):
+    def forward(self, x_text, x_image, y, missing=False, prediction=False, mod1=False, mod2=False, noise=None):
         if not missing:
             x = self.text_encoder(x_text)
             x = F.leaky_relu(x)
 
             x = self.batch_norm_g_1(x)
             x = F.sigmoid(x * 5)
+            if noise == 'mod1':
+                x = add_noise(x)
             self.gnn_graph_local_concepts = x
 
 
@@ -2983,6 +3088,8 @@ class CLEVR_SHARCS(nn.Module):
 
             x_2 = self.batch_norm_img_1(x_2)
             x_2 = F.sigmoid(x_2 * 5)
+            if noise == 'mod2':
+                x_2 = add_noise(x_2)
             self.x_tab_local_concepts = x_2
 
 
@@ -3133,13 +3240,15 @@ class CLEVR_MultiCBM(nn.Module):
 
         return d(x_tab_anchors, x_graph_anchors).mean()
 
-    def forward(self, x_text, x_image, y, missing=False, prediction=False, mod1=False, mod2=False):
+    def forward(self, x_text, x_image, y, missing=False, prediction=False, mod1=False, mod2=False, noise=None):
         if not missing:
             x = self.text_encoder(x_text)
             x = F.leaky_relu(x)
 
             x = self.batch_norm_g_1(x)
             x = F.sigmoid(x * 5)
+            if noise == 'mod1':
+                x = add_noise(x)
             self.gnn_graph_local_concepts = x
 
             x_2 = self.conv(x_image)
@@ -3149,6 +3258,8 @@ class CLEVR_MultiCBM(nn.Module):
 
             x_2 = self.batch_norm_img_1(x_2)
             x_2 = F.sigmoid(x_2 * 5)
+            if noise == 'mod2':
+                x_2 = add_noise(x_2)
             self.x_tab_local_concepts = x_2
 
             d = 0
@@ -3499,6 +3610,7 @@ class PredModel(nn.Module):
 
         return out
 
+"""
 class ActivationClassifierConcepts():
     def __init__(self, y, concepts, train_mask, test_mask, index=True, max_depth=None):
         self.concepts_index = concepts
@@ -3573,3 +3685,68 @@ class ActivationClassifierConcepts():
         v = viz_model.view2(path=path, depth_range_to_display=layers)  # render as SVG into internal object
         v.show()  # pop up window
         v.save(f"{path}/concepts_tree{integer+1}.svg")
+"""
+class ActivationClassifierConcepts():
+    def __init__(self, y, concepts, train_mask, test_mask, index=False, max_depth=None):
+        self.max_depth = max_depth
+        self.y = y
+        self.index = index
+        self.concepts = concepts
+        self.train_mask = train_mask
+        self.test_mask = test_mask
+
+        self.classifier, self.accuracy = self._train_classifier()
+
+    def _train_classifier(self):
+        self.train_concepts = []
+        self.test_concepts = []
+
+        for node_idx in range(len(self.train_mask)):
+            if self.train_mask[node_idx] == 1:
+                if self.index:
+                    self.train_concepts.append([self.concepts[node_idx]])
+                else:
+                    self.train_concepts.append(self.concepts[node_idx])
+            else:
+                if self.index:
+                    self.test_concepts.append([self.concepts[node_idx]])
+                else:
+                    self.test_concepts.append(self.concepts[node_idx])
+
+        self.concepts = self.train_concepts + self.test_concepts
+
+        cls = tree.DecisionTreeClassifier(max_depth=self.max_depth)
+        cls = cls.fit(self.train_concepts, self.y[self.train_mask])
+
+        # decision tree accuracy
+        accuracy = cls.score(self.test_concepts, self.y[self.test_mask])
+
+        return cls, accuracy
+
+    def get_classifier_accuracy(self):
+        return self.accuracy
+
+
+    def plot(self, path, layer_num=0, k=0, reduction_type=None):
+        fig, ax = plt.subplots(figsize=(20, 20))
+        tree.plot_tree(self.classifier, ax=ax, filled=True)
+        fig.suptitle(f"Decision Tree for {reduction_type} Model")
+        wandb.log({f'tree_structure': wandb.Image(plt)})
+        plt.savefig(os.path.join(path, f"{k}k_{layer_num}layer_{reduction_type}.png"))
+        plt.show()
+        plt.close()
+
+    def plot2(self, path, input_to_generate_images, x=None, pos=None, integer=1, layers=[0, 10], mode='xor'):
+
+        viz_model = tree_viz.model(self.classifier,
+                                   X_train=np.array(self.train_concepts), y_train=self.y.detach().numpy(),
+                                   feature_names = range(self.train_concepts[0].shape[0]),
+                                    )
+
+        v = viz_model.view(input_to_generate_images, path=path, depth_range_to_display=layers, show_node_labels=True, mode=mode, x=x, pos=pos)  # render as SVG into internal object
+        v.show()  # pop up window
+        v.save(f"{path}/concepts_tree{integer}.svg")
+
+        # v = viz_model.view2(path=path, depth_range_to_display=layers)  # render as SVG into internal object
+        # v.show()  # pop up window
+        # v.save(f"{path}/concepts_tree{integer+1}.svg")

@@ -354,6 +354,7 @@ def print_image(clustering_model, data, x, y, num_nodes_view, all_concepts, path
     plt.savefig(os.path.join(path, f"{task}_img_concepts.png"))
     wandb.log({task: wandb.Image(plt)})
     plt.show()
+    plt.close('all')
 
     for index, el in enumerate(to_print):
         fig_aux, ax_aux = plt.subplots(nrows=1, ncols=1, figsize=(4, 4))  # create figure & 1 axis
@@ -455,36 +456,9 @@ def plot_samples(clustering_model, data, x, pos_g, batch, y, k, num_nodes_view, 
     plt.savefig(os.path.join(path, f"{task}_g_concepts.png"))
     wandb.log({task: wandb.Image(plt)})
     plt.show()
+    plt.close('all')
 
     return top_plot, top_concepts
-
-
-def save_centroids(centroids, y, used_centroid_labels, union_concepts,
-                           g_concepts, edges, batch, x, pos_g,
-                           img_concepts, images,
-                           path):
-
-    res_sorted = clustering_utils.get_node_distances(None, union_concepts, centroids)
-    unique_concepts = np.unique(used_centroid_labels)
-    g_con = (g_concepts > 0.5) + 0
-    for c in tqdm(unique_concepts):
-        distances = res_sorted[:, c]
-        top_indices = np.argsort(distances)[::][0]
-        img = images[top_indices]
-
-        tg, cm, labels, concepts_list = clustering_utils.get_top_graphs([top_indices], g_con, y, edges, batch)
-        fig = plt.figure(figsize=(3, 3))
-        fig.add_subplot(1, 2, 1)
-        node_emb = [(x[list(t)] / 255).detach().cpu().numpy() for t in tg]
-        node_pos = [(pos_g[list(t)]).detach().cpu().numpy() for t in tg]
-        for i, el in enumerate(node_pos):
-            node_pos[i][:, 1] = np.absolute(np.subtract(node_pos[i][:, 1], np.amax(node_pos[i], axis=0)[1]))
-        node_pos = [dict(zip(list(t), pos)) for t, pos in zip(tg, node_pos)]
-        nx.draw(tg[0], node_color=node_emb[0], pos=node_pos[0])
-        fig.add_subplot(1, 2, 2)
-        plt.imshow(img.squeeze().cpu(), cmap="gray")
-        plt.axis('off')
-        plt.savefig(f'{path}/{c}.svg')
 
 def print_near_example(t_concepts, x_tab, g_concepts, expanded_x, expanded_pos, edges, batch, y_img, y_g, path, times=2, example=4):
     d = nn.PairwiseDistance(p=2)
@@ -530,6 +504,7 @@ def print_near_example(t_concepts, x_tab, g_concepts, expanded_x, expanded_pos, 
     plt.savefig(os.path.join(path, f"similar_img.png"))
     wandb.log({'similar_img': wandb.Image(plt)})
     plt.show()
+    plt.close('all')
 
     figure = plt.figure(figsize=(18, 3 * times + 2))
     image_indexes = []
@@ -571,6 +546,7 @@ def print_near_example(t_concepts, x_tab, g_concepts, expanded_x, expanded_pos, 
     plt.savefig(os.path.join(path, f"similar_g.png"))
     wandb.log({'similar_img': wandb.Image(plt)})
     plt.show()
+    plt.close('all')
 
 def retreived_similar(mod, similar_concepts):
     d = nn.PairwiseDistance(p=2)
@@ -675,6 +651,95 @@ def compute_relative_rep(mod, anchors):
             tmp = cos(mod, t).unsqueeze(dim=-1)
             result = torch.cat((result, tmp), dim=-1)
         return result
+
+def test_with_incremental_noise(model, dataloader, if_interpretable_model=True, mode='sharcs'):
+    correct = 0
+    correct_t = 0
+    device = torch.device(dev)
+    for data in dataloader:
+        data.to(device)
+        if if_interpretable_model:
+            if mode != 'single_CBM':
+                concepts_gnn, concepts_tab, out, _, _, _ = model(data, data.img, data.img_aux, data.anchor, data.y_g, data.y_img, noise="mod1")
+                concepts_gnn, concepts_tab, out2, _, _, _ = model(data, data.img, data.img_aux, data.anchor, data.y_g, data.y_img, noise="mod2")
+            else:
+                raise NotImplementedError
+        else:
+            raise NotImplementedError
+        pred = out.argmax(dim=1)
+        correct += int((pred == data.y).sum())
+        pred_t = out2.argmax(dim=1)
+        correct_t += int((pred_t == data.y).sum())
+
+    return correct / len(dataloader.dataset), correct_t / len(dataloader.dataset)
+
+def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concepts_mod2, if_interpretable_model=True, mode='sharcs'):
+    device = torch.device(dev)
+    correct = 0
+    correct_m= 0
+    correct2 = 0
+    correct_m2= 0
+    p = int(n_concepts/2)
+    for data in dataloader:
+        data.to(device)
+        if if_interpretable_model:
+            if mode != 'single_CBM':
+                concepts_gnn_noise, concepts_tab_noise, out, _, _, _ = model(data, data.img, data.img_aux, data.anchor, data.y_g, data.y_img, noise="mod1")
+                concepts_gnn_noise2, concepts_tab_noise2, out2, _, _, _ = model(data, data.img, data.img_aux, data.anchor, data.y_g, data.y_img, noise="mod2")
+                concepts_gnn, concepts_tab, out, _, _, _ = model(data, data.img, data.img_aux, data.anchor, data.y_g, data.y_img)
+                concepts_noise = torch.cat([concepts_gnn_noise, concepts_tab_noise], dim=-1)
+                concepts_noise2 = torch.cat([concepts_gnn_noise2, concepts_tab_noise2], dim=-1)
+                concepts = torch.cat([concepts_gnn, concepts_tab], dim=-1)
+                
+                tab, tab_aux = model(data, data.img, data.img_aux, data.anchor, data.y_g, data.y_img, missing=True, mod1=True)
+                retreived_graph = retreived_similar(tab_aux, concepts_mod1)
+                concepts_retrieved1 = torch.cat([retreived_graph, tab], dim=-1)
+                concepts_noise_missing_mod1 = concepts_noise.clone()
+                
+                data_img = Data(x=data.x_image, edge_index=data.edge_index_image,
+                        edge_attr=data.edge_attr_image, batch=data.x_image_batch, pos=data.pos_image)
+                graph, graph_aux = model(data, data_img, data.img_aux, data.anchor, data.y_g, data.y_img,
+                                 missing=True, mod2=True)
+                retreived_tab = retreived_similar(graph_aux, concepts_mod2)
+                concepts_retrieved2 = torch.cat([graph, retreived_tab], dim=-1)
+                concepts_noise_missing_mod2 = concepts_noise2.clone()
+                
+                # change p random values in concepts_noise according to concepts
+                c = np.random.choice(n_concepts, p, replace=False)
+                for i in c:
+                    concepts_noise[:, i] = concepts[:, i]
+                    concepts_noise_missing_mod1[:, i] = concepts_retrieved1[:, i]
+                    concepts_noise2[:, i+n_concepts] = concepts[:, i+n_concepts]
+                    concepts_noise_missing_mod2[:, i+n_concepts] = concepts_retrieved2[:, i+n_concepts]
+                    
+                g_concepts = concepts_noise[:, :int(concepts_noise.shape[1] / 2)]
+                t_concepts = concepts_noise[:, int(concepts_noise.shape[1] / 2):]
+                out = model(g_concepts.to(device), t_concepts.to(device), data.img_aux, data.anchor, data.y_g, data.y_img, missing=True, prediction=True)
+                g_concepts = concepts_noise2[:, :int(concepts_noise2.shape[1] / 2)]
+                t_concepts = concepts_noise2[:, int(concepts_noise2.shape[1] / 2):]
+                out2 = model(g_concepts.to(device), t_concepts.to(device), data.img_aux, data.anchor, data.y_g, data.y_img, missing=True, prediction=True)
+            
+                g_concepts_missing_mod = concepts_noise_missing_mod1[:, :int(concepts_noise_missing_mod1.shape[1] / 2)]
+                t_concepts_missing_mod = concepts_noise_missing_mod1[:, int(concepts_noise_missing_mod1.shape[1] / 2):]
+                out_missing_mod = model(g_concepts_missing_mod.to(device), t_concepts_missing_mod.to(device), data.img_aux, data.anchor, data.y_g, data.y_img, missing=True, prediction=True)
+                g_concepts_missing_mod = concepts_noise_missing_mod2[:, :int(concepts_noise_missing_mod2.shape[1] / 2)]
+                t_concepts_missing_mod = concepts_noise_missing_mod2[:, int(concepts_noise_missing_mod2.shape[1] / 2):]
+                out_missing_mod2 = model(g_concepts_missing_mod.to(device), t_concepts_missing_mod.to(device), data.img_aux, data.anchor, data.y_g, data.y_img, missing=True, prediction=True)
+            else:
+                raise Exception('Not implemented')
+        else:
+            raise Exception('Not implemented')
+        pred = out.argmax(dim=1)
+        correct += int((pred == data.y).sum())
+        pred_missing = out_missing_mod.argmax(dim=1)
+        correct_m += int((pred_missing == data.y).sum())
+
+        pred2 = out2.argmax(dim=1)
+        correct2 += int((pred2 == data.y).sum())
+        pred_missing2 = out_missing_mod2.argmax(dim=1)
+        correct_m2 += int((pred_missing2 == data.y).sum())
+
+    return correct / len(dataloader.dataset), correct_m / len(dataloader.dataset), correct2 / len(dataloader.dataset), correct_m2 / len(dataloader.dataset)
 
 def main():
     tag = 'mnist+superpixels'
@@ -965,7 +1030,8 @@ def main():
 
         # calculate cluster sizing
         cluster_counts = visualisation_utils.print_cluster_counts(used_centroid_labels)
-        classifier = models.ActivationClassifierConcepts(y_g, used_centroid_labels, train_mask, test_mask)
+        concepts_g_local_tree = (concepts_g_local.detach().numpy() > 0.5).astype(int)
+        classifier = models.ActivationClassifierConcepts(y_g, concepts_g_local_tree, train_mask, test_mask)
 
         print(f"Classifier Concept completeness score: {classifier.accuracy}")
         concept_metrics = [('cluster_count', cluster_counts)]
@@ -998,7 +1064,8 @@ def main():
 
         # calculate cluster sizing
         cluster_counts = visualisation_utils.print_cluster_counts(used_centroid_labels)
-        classifier = models.ActivationClassifierConcepts(y_img, used_centroid_labels, train_mask, test_mask)
+        concepts_img_local_tree = (concepts_img_local.detach().numpy() > 0.5).astype(int)
+        classifier = models.ActivationClassifierConcepts(y_img, concepts_img_local_tree, train_mask, test_mask)
 
         print(f"Classifier Concept completeness score: {classifier.accuracy}")
         concept_metrics = [('cluster_count', cluster_counts)]
@@ -1034,7 +1101,8 @@ def main():
             cluster_counts = visualisation_utils.print_cluster_counts(used_centroid_labels)
             train_mask_double = np.concatenate((train_mask, train_mask), axis=0)
             test_mask_double = np.concatenate((test_mask, test_mask), axis=0)
-            classifier = models.ActivationClassifierConcepts(y_double, used_centroid_labels, train_mask_double, test_mask_double)
+            concept_tree = (concepts.detach().numpy() > 0.5).astype(int)
+            classifier = models.ActivationClassifierConcepts(y_double, concept_tree, train_mask_double, test_mask_double)
 
             print(f"Classifier Concept completeness score: {classifier.accuracy}")
             concept_metrics = [('cluster_count', cluster_counts)]
@@ -1090,36 +1158,52 @@ def main():
             # calculate cluster sizing
             cluster_counts = visualisation_utils.print_cluster_counts(used_centroid_labels)
 
-            classifier = models.ActivationClassifierConcepts(y, used_centroid_labels, train_mask, test_mask)
-            save_centroids(centroids, y, used_centroid_labels, union_concepts,
-                           g_concepts, edges_t, expanded_batch, expanded_x, expanded_pos,
-                           t_concepts, x_tab,
-                           path)
-            classifier.plot2(path)
-            classifier.plot2(path, integer=5, layers=[0, 3])
+            union_concepts_tree = (union_concepts.detach().numpy() > 0.5).astype(int)
+            classifier = models.ActivationClassifierConcepts(y, union_concepts_tree, train_mask, test_mask)
+
             print(f"Classifier Concept completeness score: {classifier.accuracy}")
             concept_metrics = [('cluster_count', cluster_counts)]
             persistence_utils.persist_experiment(concept_metrics, path, 'graph_concept_metrics.z')
             wandb.log({'combined completeness': classifier.accuracy, 'num clusters combined': len(centroids)})
 
-            classifier = models.ActivationClassifierConcepts(y, used_centroid_labels, train_mask, test_mask,
+            acc_noise1, acc_noise2 = test_with_incremental_noise(model, full_test_loader, if_interpretable_model=interpretable, mode=MODE)
+            wandb.log({'noise accuracy mod1': acc_noise1, 'noise accuracy mod2': acc_noise2})
+            print(f'Noise accuracy mod1: {acc_noise1}, mod2: {acc_noise2}')
+
+            acc_int_gt1, acc_int_mod1, acc_int_gt2, acc_int_mod2 = test_with_interventions(model, t_concepts.shape[-1], test_loader, g_concepts, t_concepts, if_interpretable_model=interpretable, mode=MODE)
+            wandb.log({'interventions accuracy latent mod1': acc_int_gt1, 'interventions accuracy missing modality1': acc_int_mod1, 
+                       'interventions accuracy latent mod2': acc_int_gt2, 'interventions accuracy missing modality2': acc_int_mod2})
+            print(f'Interventions accuracy mod 1: {acc_int_gt1}, {acc_int_mod1}, mod 2: {acc_int_gt2}, {acc_int_mod2}')
+
+            try:
+                classifier.plot2(path, [union_concepts.detach(), y, expanded_batch, edges_t, x_tab, path], mode='mnist', x=expanded_x, pos=expanded_pos)
+                classifier.plot2(path, [union_concepts.detach(), y, expanded_batch, edges_t, x_tab, path], integer=5, layers=[0, 3], mode='mnist', x=expanded_x, pos=expanded_pos)
+            except Exception as e:
+                print(e)
+
+            classifier = models.ActivationClassifierConcepts(y, union_concepts_tree, train_mask, test_mask,
                                                              max_depth=5)
-            classifier.plot2(path, integer=3)
 
             print(f"Classifier Concept completeness score: {classifier.accuracy}")
             concept_metrics = [('cluster_count', cluster_counts)]
             persistence_utils.persist_experiment(concept_metrics, path, 'graph_concept_metrics.z')
             wandb.log({'combined completeness 2': classifier.accuracy})
 
+            try:
+                classifier.plot2(path, [union_concepts.detach(), y, expanded_batch, edges_t, x_tab, path], integer=3, mode='mnist', x=expanded_x, pos=expanded_pos)
+            except Exception as e:
+                print(e)
             # plot concept heatmaps
             # visualisation_utils.plot_concept_heatmap(centroids, union_concepts, y, used_centroid_labels, MODEL_NAME, LAYER_NUM, path, id_title="Graph ", id_path="graph_")
 
             # plot clustering
             visualisation_utils.plot_clustering(seed, union_concepts, y, centroids, centroid_labels, used_centroid_labels, MODEL_NAME, LAYER_NUM, path, task="combined", id_path="_graph",
                                                 extra=True, train_mask=train_mask, test_mask=test_mask, n_classes=NUM_CLASSES)
+            
+
 
     # clean up
-    plt.close()
+    plt.close('all')
 
     return model_to_return
 

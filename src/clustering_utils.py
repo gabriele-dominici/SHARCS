@@ -36,6 +36,9 @@ def find_centroids(concepts, y, tau=0.5):
 
     return centroids, centroid_labels, used_centroid_labels
 
+def print_table_bits(el):
+    return str(int(el[1].item())) + ' ' + str(int(el[4].item()))
+
 def get_top_graphs(top_indices, c, y, edges, batch):
     graphs = []
     color_maps = []
