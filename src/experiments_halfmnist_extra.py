@@ -712,15 +712,15 @@ def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concep
         data.to(device)
         if if_interpretable_model:
             if mode != 'single_CBM':
-                concepts_gnn_noise, concepts_tab_noise, out, _, _, _ = model(data, data.img, data.img_aux, data.anchor, data.y_g, data.y_img, noise="mod1")
-                concepts_gnn_noise2, concepts_tab_noise2, out2, _, _, _ = model(data, data.img, data.img_aux, data.anchor, data.y_g, data.y_img, noise="mod2")
+                concepts_gnn_noise, concepts_tab_noise, out, _, _, _ = model(data, data.img, data.img_aux, data.anchor, data.y_g,>
+                concepts_gnn_noise2, concepts_tab_noise2, out2, _, _, _ = model(data, data.img, data.img_aux, data.anchor, data.y>
                 concepts_gnn, concepts_tab, out, _, _, _ = model(data, data.img, data.img_aux, data.anchor, data.y_g, data.y_img)
                 concepts_noise = torch.cat([concepts_gnn_noise, concepts_tab_noise], dim=-1)
                 concepts_noise2 = torch.cat([concepts_gnn_noise2, concepts_tab_noise2], dim=-1)
                 concepts = torch.cat([concepts_gnn, concepts_tab], dim=-1)
                 
                 tab, tab_aux = model(data, data.img, data.img_aux, data.anchor, data.y_g, data.y_img, missing=True, mod1=True)
-                retreived_graph = retreived_similar(tab_aux.detach().cpu(), concepts_mod1)
+                retreived_graph = retreived_similar(tab_aux.detach().cpu(), concepts_mod1).to(device)
                 concepts_retrieved1 = torch.cat([retreived_graph, tab], dim=-1)
                 concepts_noise_missing_mod1 = concepts_noise.clone()
                 
@@ -728,7 +728,7 @@ def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concep
                         edge_attr=data.edge_attr_image, batch=data.x_image_batch, pos=data.pos_image)
                 graph, graph_aux = model(data, data_img, data.img_aux, data.anchor, data.y_g, data.y_img,
                                  missing=True, mod2=True)
-                retreived_tab = retreived_similar(graph_aux.detach().cpu(), concepts_mod2)
+                retreived_tab = retreived_similar(graph_aux.detach().cpu(), concepts_mod2).to(device)
                 concepts_retrieved2 = torch.cat([graph, retreived_tab], dim=-1)
                 concepts_noise_missing_mod2 = concepts_noise2.clone()
                 
@@ -742,17 +742,17 @@ def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concep
                     
                 g_concepts = concepts_noise[:, :int(concepts_noise.shape[1] / 2)]
                 t_concepts = concepts_noise[:, int(concepts_noise.shape[1] / 2):]
-                out = model(g_concepts.to(device), t_concepts.to(device), data.img_aux, data.anchor, data.y_g, data.y_img, missing=True, prediction=True)
+                out = model(g_concepts.to(device), t_concepts.to(device), data.img_aux, data.anchor, data.y_g, data.y_img, missin>
                 g_concepts = concepts_noise2[:, :int(concepts_noise2.shape[1] / 2)]
                 t_concepts = concepts_noise2[:, int(concepts_noise2.shape[1] / 2):]
-                out2 = model(g_concepts.to(device), t_concepts.to(device), data.img_aux, data.anchor, data.y_g, data.y_img, missing=True, prediction=True)
+                out2 = model(g_concepts.to(device), t_concepts.to(device), data.img_aux, data.anchor, data.y_g, data.y_img, missi>
             
                 g_concepts_missing_mod = concepts_noise_missing_mod1[:, :int(concepts_noise_missing_mod1.shape[1] / 2)]
                 t_concepts_missing_mod = concepts_noise_missing_mod1[:, int(concepts_noise_missing_mod1.shape[1] / 2):]
-                out_missing_mod = model(g_concepts_missing_mod.to(device), t_concepts_missing_mod.to(device), data.img_aux, data.anchor, data.y_g, data.y_img, missing=True, prediction=True)
+                out_missing_mod = model(g_concepts_missing_mod.to(device), t_concepts_missing_mod.to(device), data.img_aux, data.>
                 g_concepts_missing_mod = concepts_noise_missing_mod2[:, :int(concepts_noise_missing_mod2.shape[1] / 2)]
                 t_concepts_missing_mod = concepts_noise_missing_mod2[:, int(concepts_noise_missing_mod2.shape[1] / 2):]
-                out_missing_mod2 = model(g_concepts_missing_mod.to(device), t_concepts_missing_mod.to(device), data.img_aux, data.anchor, data.y_g, data.y_img, missing=True, prediction=True)
+                out_missing_mod2 = model(g_concepts_missing_mod.to(device), t_concepts_missing_mod.to(device), data.img_aux, data>
             else:
                 raise Exception('Not implemented')
         else:
