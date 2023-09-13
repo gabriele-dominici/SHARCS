@@ -712,8 +712,8 @@ def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concep
         data.to(device)
         if if_interpretable_model:
             if mode != 'single_CBM':
-                concepts_gnn_noise, concepts_tab_noise, out, _, _, _ = model(data, data.img, data.img_aux, data.anchor, data.y_g,>
-                concepts_gnn_noise2, concepts_tab_noise2, out2, _, _, _ = model(data, data.img, data.img_aux, data.anchor, data.y>
+                concepts_gnn_noise, concepts_tab_noise, out, _, _, _ = model(data, data.img, data.img_aux, data.anchor, data.y_g, data.y_img, noise="mod1")
+                concepts_gnn_noise2, concepts_tab_noise2, out2, _, _, _ = model(data, data.img, data.img_aux, data.anchor, data.y_g, data.y_img, noise="mod2")
                 concepts_gnn, concepts_tab, out, _, _, _ = model(data, data.img, data.img_aux, data.anchor, data.y_g, data.y_img)
                 concepts_noise = torch.cat([concepts_gnn_noise, concepts_tab_noise], dim=-1)
                 concepts_noise2 = torch.cat([concepts_gnn_noise2, concepts_tab_noise2], dim=-1)
@@ -742,17 +742,17 @@ def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concep
                     
                 g_concepts = concepts_noise[:, :int(concepts_noise.shape[1] / 2)]
                 t_concepts = concepts_noise[:, int(concepts_noise.shape[1] / 2):]
-                out = model(g_concepts.to(device), t_concepts.to(device), data.img_aux, data.anchor, data.y_g, data.y_img, missin>
+                out = model(g_concepts.to(device), t_concepts.to(device), data.img_aux, data.anchor, data.y_g, data.y_img, missing=True, prediction=True)
                 g_concepts = concepts_noise2[:, :int(concepts_noise2.shape[1] / 2)]
                 t_concepts = concepts_noise2[:, int(concepts_noise2.shape[1] / 2):]
-                out2 = model(g_concepts.to(device), t_concepts.to(device), data.img_aux, data.anchor, data.y_g, data.y_img, missi>
+                out2 = model(g_concepts.to(device), t_concepts.to(device), data.img_aux, data.anchor, data.y_g, data.y_img, missing=True, prediction=True)
             
                 g_concepts_missing_mod = concepts_noise_missing_mod1[:, :int(concepts_noise_missing_mod1.shape[1] / 2)]
                 t_concepts_missing_mod = concepts_noise_missing_mod1[:, int(concepts_noise_missing_mod1.shape[1] / 2):]
-                out_missing_mod = model(g_concepts_missing_mod.to(device), t_concepts_missing_mod.to(device), data.img_aux, data.>
+                out_missing_mod = model(g_concepts_missing_mod.to(device), t_concepts_missing_mod.to(device), data.img_aux, data.anchor, data.y_g, data.y_img, missing=True, prediction=True)
                 g_concepts_missing_mod = concepts_noise_missing_mod2[:, :int(concepts_noise_missing_mod2.shape[1] / 2)]
                 t_concepts_missing_mod = concepts_noise_missing_mod2[:, int(concepts_noise_missing_mod2.shape[1] / 2):]
-                out_missing_mod2 = model(g_concepts_missing_mod.to(device), t_concepts_missing_mod.to(device), data.img_aux, data>
+                out_missing_mod2 = model(g_concepts_missing_mod.to(device), t_concepts_missing_mod.to(device), data.img_aux, data.anchor, data.y_g, data.y_img, missing=True, prediction=True)
             else:
                 raise Exception('Not implemented')
         else:
