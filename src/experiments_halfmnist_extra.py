@@ -702,7 +702,7 @@ def test_with_incremental_noise(model, dataloader, if_interpretable_model=True, 
     return correct / len(dataloader.dataset), correct_t / len(dataloader.dataset)
 
 def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concepts_mod2, if_interpretable_model=True, mode='sharcs'):
-    device = torch.device(dev)
+    device = torch.device(dev)   
     correct = 0
     correct_m= 0
     correct2 = 0
@@ -720,7 +720,7 @@ def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concep
                 concepts = torch.cat([concepts_gnn, concepts_tab], dim=-1)
                 
                 tab, tab_aux = model(data, data.img, data.img_aux, data.anchor, data.y_g, data.y_img, missing=True, mod1=True)
-                retreived_graph = retreived_similar(tab_aux, concepts_mod1)
+                retreived_graph = retreived_similar(tab_aux.detach().cpu(), concepts_mod1)
                 concepts_retrieved1 = torch.cat([retreived_graph, tab], dim=-1)
                 concepts_noise_missing_mod1 = concepts_noise.clone()
                 
@@ -728,7 +728,7 @@ def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concep
                         edge_attr=data.edge_attr_image, batch=data.x_image_batch, pos=data.pos_image)
                 graph, graph_aux = model(data, data_img, data.img_aux, data.anchor, data.y_g, data.y_img,
                                  missing=True, mod2=True)
-                retreived_tab = retreived_similar(graph_aux, concepts_mod2)
+                retreived_tab = retreived_similar(graph_aux.detach().cpu(), concepts_mod2)
                 concepts_retrieved2 = torch.cat([graph, retreived_tab], dim=-1)
                 concepts_noise_missing_mod2 = concepts_noise2.clone()
                 
@@ -768,7 +768,6 @@ def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concep
         correct_m2 += int((pred_missing2 == data.y).sum())
 
     return correct / len(dataloader.dataset), correct_m / len(dataloader.dataset), correct2 / len(dataloader.dataset), correct_m2 / len(dataloader.dataset)
-
 
 
 def main():
