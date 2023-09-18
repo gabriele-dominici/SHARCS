@@ -745,8 +745,8 @@ def test_with_incremental_noise(model, dataloader, if_interpretable_model=True, 
         y = y.to(device)
         if if_interpretable_model:
             if mode != 'single_CBM':
-                concepts_gnn, concepts_tab, out, _, _, _ = model(input_text, input_image, y, noise="mod1")
-                concepts_gnn, concepts_tab, out2, _, _, _ = model(input_text, input_image, y, noise="mod2")
+                concepts_gnn, concepts_tab, out, _ = model(input_text, input_image, y, noise="mod1")
+                cconcepts_gnn, concepts_tab, out2, _ = model(input_text, input_image, y, noise="mod2")
             else:
                 raise NotImplementedError
         else:
@@ -771,9 +771,9 @@ def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concep
         y = y.to(device)
         if if_interpretable_model:
             if mode != 'single_CBM':
-                concepts_gnn_noise, concepts_tab_noise, out, _, _, _ = model(input_text, input_image, y, noise="mod2")
-                concepts_gnn_noise2, concepts_tab_noise2, out2, _, _, _ = model(input_text, input_image, y, noise="mod1")
-                concepts_gnn, concepts_tab, out, _, _, _ = model(input_text, input_image, y)
+                concepts_gnn_noise, concepts_tab_noise, out, _ = model(input_text, input_image, y, noise="mod2")
+                concepts_gnn_noise2, concepts_tab_noise2, out2, _ = model(input_text, input_image, y, noise="mod1")
+                concepts_gnn, concepts_tab, out, _ = model(input_text, input_image, y)
                 concepts_noise = torch.cat([concepts_gnn_noise, concepts_tab_noise], dim=-1)
                 concepts_noise2 = torch.cat([concepts_gnn_noise2, concepts_tab_noise2], dim=-1)
                 concepts = torch.cat([concepts_gnn, concepts_tab], dim=-1)
