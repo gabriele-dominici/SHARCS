@@ -789,7 +789,7 @@ def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concep
                 retreived_image = retreived_similar(text_aux.detach().cpu(), concepts_mod2)
                 retreived_image = retreived_image.to(device)
                 concepts_retrieved1 = torch.cat([text, retreived_image], dim=-1)
-                concepts_noise_missing_mod1 = concepts_noise.clone()
+                concepts_noise_missing_mod1 = concepts_noise.clone()[filter]
 
                 filter = torch.flatten((image_aux != (torch.zeros(input_image[0].shape)-1)), start_dim=1).all(dim=-1)
                 img_aux_mod2 = image_aux[filter]
@@ -802,7 +802,7 @@ def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concep
                 retreived_text = retreived_similar(img_aux.detach().cpu(), concepts_mod1)
                 retreived_text = retreived_text.to(device)
                 concepts_retrieved2 = torch.cat([retreived_text, img], dim=-1)
-                concepts_noise_missing_mod2 = concepts_noise2.clone()
+                concepts_noise_missing_mod2 = concepts_noise2.clone()[filter]
                 
                 # change p random values in concepts_noise according to concepts
                 c = np.random.choice(n_concepts, p, replace=False)
