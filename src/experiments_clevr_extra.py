@@ -814,17 +814,17 @@ def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concep
                     
                 g_concepts = concepts_noise[:, :int(concepts_noise.shape[1] / 2)]
                 t_concepts = concepts_noise[:, int(concepts_noise.shape[1] / 2):]
-                concepts_gnn, concepts_tab, out, _ = model(g_concepts, t_concepts, y, missing=True, prediction=True)
+                out = model(g_concepts, t_concepts, y, missing=True, prediction=True)
                 g_concepts = concepts_noise2[:, :int(concepts_noise2.shape[1] / 2)]
                 t_concepts = concepts_noise2[:, int(concepts_noise2.shape[1] / 2):]
-                concepts_gnn, concepts_tab, out2, _ = model(g_concepts, t_concepts, y, missing=True, prediction=True)
+                out2 = model(g_concepts, t_concepts, y, missing=True, prediction=True)
                 
                 g_concepts_missing_mod = concepts_noise_missing_mod1[:, :int(concepts_noise_missing_mod1.shape[1] / 2)]
                 t_concepts_missing_mod = concepts_noise_missing_mod1[:, int(concepts_noise_missing_mod1.shape[1] / 2):]
-                concepts_gnn_missing_mod, concepts_tab_missing_mod, out_missing_mod, _ = model(g_concepts_missing_mod, t_concepts_missing_mod, y_mod1, missing=True, prediction=True)
+                out_missing_mod = model(g_concepts_missing_mod, t_concepts_missing_mod, y_mod1, missing=True, prediction=True)
                 g_concepts_missing_mod = concepts_noise_missing_mod2[:, :int(concepts_noise_missing_mod2.shape[1] / 2)]
                 t_concepts_missing_mod = concepts_noise_missing_mod2[:, int(concepts_noise_missing_mod2.shape[1] / 2):]
-                concepts_gnn_missing_mod, concepts_tab_missing_mod, out_missing_mod2, _ = model(g_concepts_missing_mod, t_concepts_missing_mod, y_mod2, missing=True, prediction=True)
+                out_missing_mod2 = model(g_concepts_missing_mod, t_concepts_missing_mod, y_mod2, missing=True, prediction=True)
             else:
                 raise Exception('Not implemented')
         else:
