@@ -791,7 +791,7 @@ def test_with_interventions(model, n_concepts, dataloader, concepts_mod1, concep
                 concepts_retrieved1 = torch.cat([text, retreived_image], dim=-1)
                 concepts_noise_missing_mod1 = concepts_noise.clone()
 
-                filter = torch.flatten((img_aux != (torch.zeros(input_image[0].shape)-1)), start_dim=1).all(dim=-1)
+                filter = torch.flatten((image_aux != (torch.zeros(input_image[0].shape)-1)), start_dim=1).all(dim=-1)
                 img_aux_mod2 = img_aux[filter]
                 input_image_mod2 = input_image[filter]
                 y_mod2 = y[filter]
