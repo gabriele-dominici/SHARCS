@@ -1045,9 +1045,12 @@ class DTreeVizAPI:
             indexes = indexes[f]
             filtered_concept_embeddings = filtered_concept_embeddings[f]
         
-
         sort_indices = np.argsort(np.absolute(filtered_concept_embeddings[:, k]-v))
-        real_indexes = indexes[sort_indices][:min(3,len(sort_indices))]
+        print(len(sort_indices))
+        real_indexes = indexes[sort_indices][:min(3,len(sort_indices))].astype(int)
+        print(real_indexes)
+        if len(real_indexes) == 0: 
+            return []
         if mode == 'xor':
             edges = edges_or_mod1
             top_instance = mod2[real_indexes]
@@ -1056,7 +1059,7 @@ class DTreeVizAPI:
             tg, _, _, _ = get_top_graphs(real_indexes, g_con, y, edges, batch)
             for i in range(len(tg)):
                 plt.figure(figsize=(3, 3))
-                plt.title(tab[i], fontsize=10)
+                plt.title(tab[i], fontsize=30)
                 nx.draw(tg[i])
                 path_list += [f'{path}/{k}_{v}_{i}.svg']
                 plt.savefig(f'{path}/{k}_{v}_{i}.svg')
@@ -1086,13 +1089,14 @@ class DTreeVizAPI:
             plt.close('all')
         elif mode == 'clevr':
             mod1 = edges_or_mod1
-            text = mod2[real_indexes]
+            print(len(mod1), len(mod2))
             image_index = mod1[real_indexes]
+            text = [mod2[i] for i in real_indexes]
 
             for i in range(len(text)):
                 plt.figure(figsize=(3, 3))
-                plt.title(text, fontsize=10)
-                name = str(image_index)
+                plt.title(text[i], fontsize=10)
+                name = str(image_index[i])
                 name = '0' * (6 - len(name)) + name
                 fname = f'./clevr_data/train_full/CLEVR_train_full_{name}.png'
                 img = np.array(Image.open(fname))
@@ -1201,27 +1205,38 @@ class DTreeVizAPI:
                                     </tr>
                                     </table>"""
                 else:
+                    print(node)
+                    print('--------------------------')
                     filter = self.generate_filter(node)
+                    print(filter)
                     paths = self.generate_images(filter, *input_to_generate_images, x=x, pos_g=pos, mode=mode)
-                    html = f"""
-                    <table CELLBORDER="0">
-                        <tr>
-                            <td>
-                                <table align='center' border="1" CELLBORDER="1">
-                                    <tr align='center' style="border: 2px solid black;">"""
-                    images = f""""""
-                    for el in paths:
-                        images += f"""<td><img src="{el}"/></td>"""
-                    html += images + f"""
+                    print(paths)
+                    if len(paths) == 0:
+                        html = f"""<table CELLBORDER="0">
+                                    <tr align='center' border='3px'>
+                                            <td><font face="{fontname}" color="{colors["text"]}" point-size="15">Concept {name}</font></td>
                                     </tr>
-                                </table>
-                            </td>
-                        </tr>
-                        <tr align='center' style="border: 0px;">
-                            <td CELLPADDING="0" CELLSPACING="0"><font face="{fontname}" color="{colors["text"]}" point-size="15">Concept {name}</font></td>
-                        </tr>'
-                    </table>
-                    """
+                                    </table>"""
+                    else:
+                        html = f"""
+                        <table CELLBORDER="0">
+                            <tr>
+                                <td>
+                                    <table align='center' border="1" CELLBORDER="1">
+                                        <tr align='center' style="border: 2px solid black;">"""
+                        images = f""""""
+                        for el in paths:
+                            images += f"""<td><img src="{el}"/></td>"""
+                        html += images + f"""
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                            <tr align='center' style="border: 0px;">
+                                <td CELLPADDING="0" CELLSPACING="0"><font face="{fontname}" color="{colors["text"]}" point-size="15">Concept {name}</font></td>
+                            </tr>'
+                        </table>
+                        """
             else:
                 html = f"""<font face="{fontname}" color="{colors["text"]}" point-size="12">{name}@{split}</font>"""
             if node.id in highlight_path:
@@ -1260,20 +1275,27 @@ class DTreeVizAPI:
                     </table>"""
             else:
                 filter = self.generate_filter(node)
-                paths = self.generate_images(filter, *input_to_generate_images)
-                html = f"""<table CELLBORDER="0">
-                    <tr align='center' border='3px'>"""
-                images = f""""""
-                for el in paths:
-                    images += f"""<td><img src="{el}"/></td>"""
-                html += images + f"""
-                                </tr>
-                                <tr align='center'>
-                                    <td></td>
-                                    <td><img src="{tmp}/leaf{node.id}_{os.getpid()}.svg"/></td>
-                                    <td></td>
-                                </tr>
-                                </table>"""
+                paths = self.generate_images(filter, *input_to_generate_images, x=x, pos_g=pos, mode=mode)
+                if len(paths) == 0:
+                    html = f"""<table border="0" CELLBORDER="0">
+                    <tr align='center'>
+                            <td><img src="{tmp}/leaf{node.id}_{os.getpid()}.svg"/></td>
+                    </tr>
+                    </table>"""
+                else:
+                    html = f"""<table CELLBORDER="0">
+                        <tr align='center' border='3px'>"""
+                    images = f""""""
+                    for el in paths:
+                        images += f"""<td><img src="{el}"/></td>"""
+                    html += images + f"""
+                                    </tr>
+                                    <tr align='center'>
+                                        <td></td>
+                                        <td><img src="{tmp}/leaf{node.id}_{os.getpid()}.svg"/></td>
+                                        <td></td>
+                                    </tr>
+                                    </table>"""
 
                     
             if node.id in highlight_path:

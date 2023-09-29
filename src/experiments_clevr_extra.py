@@ -920,7 +920,7 @@ def main():
     else:
         model = models.CLEVR_SHARCS(VOCAB_DIM, CLUSTER_ENCODING_SIZE, NUM_CLASSES)
         interpretable = True
-        EPOCHS += 20
+        # EPOCHS += 20
     model.to(dev)
 
     model_to_return = model
@@ -1227,19 +1227,19 @@ def main():
             persistence_utils.persist_experiment(concept_metrics, path, 'graph_concept_metrics.z')
             wandb.log({'combined completeness': classifier.accuracy, 'num clusters combined': len(centroids)})
 
-            acc_noise1, acc_noise2 = test_with_incremental_noise(model, full_test_loader, if_interpretable_model=interpretable, mode=MODE)
-            wandb.log({'noise accuracy mod1': acc_noise1, 'noise accuracy mod2': acc_noise2})
-            print(f'Noise accuracy mod1: {acc_noise1}, mod2: {acc_noise2}')
+            #acc_noise1, acc_noise2 = test_with_incremental_noise(model, full_test_loader, if_interpretable_model=interpretable, mode=MODE)
+            #wandb.log({'noise accuracy mod1': acc_noise1, 'noise accuracy mod2': acc_noise2})
+            #print(f'Noise accuracy mod1: {acc_noise1}, mod2: {acc_noise2}')
 
-            acc_int_gt1, acc_int_mod1, acc_int_gt2, acc_int_mod2 = test_with_interventions(model, t_concepts.shape[-1], test_loader, g_concepts, t_concepts, if_interpretable_model=interpretable, mode=MODE)
-            wandb.log({'interventions accuracy latent mod1': acc_int_gt1, 'interventions accuracy missing modality1': acc_int_mod1, 
-                       'interventions accuracy latent mod2': acc_int_gt2, 'interventions accuracy missing modality2': acc_int_mod2})
-            print(f'Interventions accuracy mod 1: {acc_int_gt1}, {acc_int_mod1}, mod 2: {acc_int_gt2}, {acc_int_mod2}')
+            #acc_int_gt1, acc_int_mod1, acc_int_gt2, acc_int_mod2 = test_with_interventions(model, t_concepts.shape[-1], test_loader, g_concepts, t_concepts, if_interpretable_model=interpretable, mode=MODE)
+            #wandb.log({'interventions accuracy latent mod1': acc_int_gt1, 'interventions accuracy missing modality1': acc_int_mod1, 
+            #            'interventions accuracy latent mod2': acc_int_gt2, 'interventions accuracy missing modality2': acc_int_mod2})
+            #print(f'Interventions accuracy mod 1: {acc_int_gt1}, {acc_int_mod1}, mod 2: {acc_int_gt2}, {acc_int_mod2}')
 
-            try:
-                classifier.plot2(path, [union_concepts.detach(), y, None, idx, questions, path], integer=3, mode='clevr')
-            except Exception as e:
-                print(e)
+            #try:
+            classifier.plot2(path, [union_concepts.detach(), y, None, idx, questions, path], integer=3, mode='clevr')
+            #except Exception as e:
+            #    print(e)
             classifier = models.ActivationClassifierConcepts(y, union_concepts_tree, train_mask, test_mask,
                                                              max_depth=5)
 
@@ -1247,6 +1247,7 @@ def main():
             concept_metrics = [('cluster_count', cluster_counts)]
             persistence_utils.persist_experiment(concept_metrics, path, 'graph_concept_metrics.z')
             wandb.log({'combined completeness 2': classifier.accuracy})
+            questions = questions
             try: 
                 classifier.plot2(path, [union_concepts.detach(), y, None, idx, questions, path], integer=3, mode='clevr')
             except Exception as e:
