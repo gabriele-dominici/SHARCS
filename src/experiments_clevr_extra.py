@@ -920,7 +920,7 @@ def main():
     else:
         model = models.CLEVR_SHARCS(VOCAB_DIM, CLUSTER_ENCODING_SIZE, NUM_CLASSES)
         interpretable = True
-        # EPOCHS += 20
+        EPOCHS += 20
     model.to(dev)
 
     model_to_return = model
